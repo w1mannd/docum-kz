@@ -11,7 +11,7 @@
   var phone = window.matchMedia('(max-width: 768px)');
   var calm = window.matchMedia('(prefers-reduced-transparency: reduce)');
   var NS = 'http://www.w3.org/2000/svg';
-  var BEZEL = 20, SCALE = 44;
+  var BEZEL = 14, SCALE = 34;
   var targets = [['.tab-bar', 'lg-tab'], ['.action-bar', 'lg-action']];
 
   var svg = document.createElementNS(NS, 'svg');
@@ -61,7 +61,7 @@
     f.setAttribute('color-interpolation-filters', 'sRGB');
     var blur = document.createElementNS(NS, 'feGaussianBlur');
     blur.setAttribute('in', 'SourceGraphic');
-    blur.setAttribute('stdDeviation', '2.2');
+    blur.setAttribute('stdDeviation', '1.2');
     blur.setAttribute('result', 'soft');
     var map = document.createElementNS(NS, 'feImage');
     map.setAttribute('href', displacementMap(w, h, radius));

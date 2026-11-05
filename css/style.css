@@ -102,6 +102,8 @@ a.card:hover { text-decoration: none; background: #EDEDF0; }
 .input { width: 100%; min-height: 46px; padding: 10px 14px; font: inherit; font-size: 16px; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-field); -webkit-appearance: none; appearance: none; }
 textarea.input { resize: vertical; min-height: 110px; }
 select.input { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none' stroke='%236E6E73' stroke-width='1.6'%3E%3Cpath d='M1 1.5l5 5 5-5'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; padding-right: 36px; }
+input[type="date"].input { text-align: left; }
+input[type="date"].input::-webkit-date-and-time-value { text-align: left; }
 .input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0, 113, 227, .18); }
 .input[aria-invalid="true"] { border-color: var(--error); }
 .input::placeholder { color: var(--muted); opacity: 1; }
@@ -242,21 +244,21 @@ button.step-btn { cursor: pointer; }
 
 /* Phone */
 @media (max-width: 768px) {
-  :root { --gutter: 18px; --head-h: 56px; --tab-h: 66px; --tab-gap: calc(10px + env(safe-area-inset-bottom)); --glass-fill: rgba(255, 255, 255, .16); --glass-filter: blur(7px) saturate(190%) brightness(1.06); --glass-shadow: 0 12px 30px -10px rgba(0, 0, 0, .3), 0 1px 3px rgba(0, 0, 0, .1), inset 0 1.5px 1px rgba(255, 255, 255, .9), inset 1px 0 1px rgba(255, 255, 255, .35), inset -1px 0 1px rgba(255, 255, 255, .35), inset 0 -1px 1px rgba(255, 255, 255, .5), inset 0 -9px 14px -11px rgba(0, 0, 0, .16); }
+  :root { --gutter: 18px; --head-h: 56px; --tab-h: 66px; --tab-gap: calc(10px + env(safe-area-inset-bottom)); --glass-fill: rgba(255, 255, 255, .58); --glass-filter: blur(2.5px) saturate(170%); --glass-shadow: 0 10px 28px -6px rgba(0, 0, 0, .14), 0 1px 2px rgba(0, 0, 0, .05), inset 0 0 0 1px rgba(255, 255, 255, .7); }
   body { font-size: 16px; padding-bottom: calc(var(--tab-h) + var(--tab-gap) + 10px); }
   .site-head { background: rgba(255, 255, 255, .5); -webkit-backdrop-filter: blur(14px) saturate(190%); backdrop-filter: blur(14px) saturate(190%); border-bottom: 1px solid rgba(255, 255, 255, .5); box-shadow: 0 1px 0 rgba(0, 0, 0, .06); }
   .head-in { gap: 10px; }
   .site-nav { display: none; }
   .tab-bar { position: fixed; z-index: 40; left: 12px; right: 12px; bottom: var(--tab-gap); max-width: 440px; margin: 0 auto; height: var(--tab-h); padding: 6px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; border-radius: 33px; }
-  .tab-bar, .action-bar { background: var(--glass-fill); -webkit-backdrop-filter: var(--glass-filter); backdrop-filter: var(--glass-filter); border: 1px solid rgba(255, 255, 255, .5); box-shadow: var(--glass-shadow); }
-  .tab-bar::before, .action-bar::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: linear-gradient(135deg, rgba(255, 255, 255, .55) 0%, rgba(255, 255, 255, 0) 32%, rgba(255, 255, 255, 0) 68%, rgba(255, 255, 255, .28) 100%); }
+  .tab-bar, .action-bar { background: var(--glass-fill); -webkit-backdrop-filter: var(--glass-filter); backdrop-filter: var(--glass-filter); border: .5px solid rgba(60, 60, 67, .22); box-shadow: var(--glass-shadow); }
   .tab-bar > *, .action-inner { position: relative; }
-  .lg-refract .tab-bar { -webkit-backdrop-filter: url(#lg-tab) saturate(190%) brightness(1.06); backdrop-filter: url(#lg-tab) saturate(190%) brightness(1.06); }
-  .lg-refract .action-bar { -webkit-backdrop-filter: url(#lg-action) saturate(190%) brightness(1.06); backdrop-filter: url(#lg-action) saturate(190%) brightness(1.06); }
-  .tab { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 0; border-radius: 27px; color: var(--text); font-size: 11px; font-weight: 600; line-height: 1.15; text-align: center; text-shadow: 0 0 5px rgba(255, 255, 255, .95), 0 0 2px rgba(255, 255, 255, .9); }
+  .lg-refract .tab-bar { -webkit-backdrop-filter: url(#lg-tab) saturate(170%); backdrop-filter: url(#lg-tab) saturate(170%); }
+  .lg-refract .action-bar { -webkit-backdrop-filter: url(#lg-action) saturate(170%); backdrop-filter: url(#lg-action) saturate(170%); }
+  .tab { display: grid; grid-template-rows: 26px 14px; row-gap: 2px; justify-items: center; align-content: center; min-width: 0; border-radius: 27px; color: var(--text); font-size: 11.5px; font-weight: 500; line-height: 14px; text-align: center; }
+  .tab span { display: block; max-width: 100%; white-space: nowrap; }
   .tab:hover { text-decoration: none; }
-  .tab svg { width: 23px; height: 23px; flex: none; filter: drop-shadow(0 0 3px rgba(255, 255, 255, .9)); }
-  .tab[aria-current="page"] { color: var(--accent-d); background: rgba(255, 255, 255, .34); box-shadow: inset 0 1px 1px rgba(255, 255, 255, .85), 0 1px 4px rgba(0, 0, 0, .08); }
+  .tab svg { display: block; width: 26px; height: 26px; }
+  .tab[aria-current="page"] { color: #007AFF; background: rgba(120, 120, 128, .14); }
   .lang { margin-left: auto; }
 
   .hero { padding: 44px 0 48px; }
@@ -291,7 +293,9 @@ button.step-btn { cursor: pointer; }
   .item-unit, .item-qty, .item-price, .item-done, .item-grid:has(.item-done) .item-unit, .item-grid:has(.item-done) .item-qty { grid-column: span 1; }
   .item-price { grid-column: 1 / -1; }
 
-  .action-bar { position: sticky; bottom: calc(var(--tab-h) + var(--tab-gap) + 8px); margin: 20px 0 0; border-radius: 28px; padding: 6px; z-index: 20; }
+  .action-bar { position: fixed; z-index: 40; left: 12px; right: 12px; bottom: var(--tab-gap); max-width: 440px; margin: 0 auto; border-radius: 28px; padding: 6px; }
+  /* Пока заполняется документ, нижнее меню скрыто: внизу экрана только кнопки шагов. */
+  .is-building .tab-bar { display: none; }
   .action-inner { gap: 8px; }
   .action-inner .btn { flex: 1 1 0; padding: 0 6px; font-size: 14px; white-space: nowrap; }
   #builder-page { padding-bottom: 0; }
@@ -312,7 +316,6 @@ button.step-btn { cursor: pointer; }
 @supports (-apple-visual-effect: -apple-system-glass-material) {
   @media (max-width: 768px) {
     .tab-bar, .action-bar { -apple-visual-effect: -apple-system-glass-material; background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; }
-    .tab-bar::before, .action-bar::before { display: none; }
   }
 }
 

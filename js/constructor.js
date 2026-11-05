@@ -165,6 +165,7 @@
 
   /* ---------- Каркас шага ---------- */
   function render(focusId) {
+    document.body.classList.toggle('is-building', !!state.code);
     if (!state.code) { renderPicker(); return; }
     root.textContent = '';
 
