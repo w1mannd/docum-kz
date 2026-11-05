@@ -1,0 +1,496 @@
+/* docum.kz — схемы полей и шаблоны документов.
+   Один шаблон отдаёт список блоков; из него строятся предпросмотр, .docx и .pdf,
+   поэтому текст во всех трёх видах совпадает. */
+(function (root) {
+  'use strict';
+  var L = root.DocumLogic || (typeof require !== 'undefined' ? require('./validation.js') : null);
+
+  /* ---------- Поля ---------- */
+  var FIELDS = {
+    number: { type: 'text' },
+    date: { type: 'date' },
+    city: { type: 'text' },
+
+    ip_name: { type: 'text', group: 'g.ip' },
+    ip_fio: { type: 'text' },
+    ip_iin: { type: 'text', rule: 'iin', mode: 'numeric', max: 12 },
+    ip_addr: { type: 'text' },
+    ip_contact: { type: 'text', optional: true },
+    ip_doc: { type: 'text' },
+    ip_iik: { type: 'text' },
+    ip_bank: { type: 'text' },
+    ip_bik: { type: 'text' },
+
+    cp_name: { type: 'text', group: 'g.cp' },
+    cp_bin: { type: 'text', rule: 'iin', mode: 'numeric', max: 12 },
+    cp_addr: { type: 'text' },
+    cp_rep: { type: 'text', optional: true },
+    cp_contact: { type: 'text', optional: true },
+
+    subject: { type: 'area' },
+    start: { type: 'date' },
+    end: { type: 'date' },
+    third: { type: 'check', optional: true },
+
+    price: { type: 'text', rule: 'money', mode: 'decimal' },
+    vat: { type: 'check', optional: true },
+    pay_order: { type: 'select', options: ['prepay', 'postpay'], init: 'postpay' },
+    pay_days: { type: 'text', rule: 'posInt', mode: 'numeric' },
+    penalty: { type: 'text', rule: 'penalty', mode: 'decimal', optional: true },
+
+    basis: { type: 'text', optional: true },
+    due: { type: 'date' },
+    items: { type: 'items' },
+    items_act: { type: 'items', withDate: true },
+    contract_no: { type: 'text' },
+    contract_date: { type: 'date' },
+
+    w_fio: { type: 'text', group: 'g.worker' },
+    w_iin: { type: 'text', rule: 'iin', mode: 'numeric', max: 12 },
+    w_addr: { type: 'text' },
+    w_doc: { type: 'text' },
+    age16: { type: 'check', rule: 'age' },
+    position: { type: 'text' },
+    place: { type: 'text' },
+    term_kind: { type: 'select', options: ['indefinite', 'fixed'], init: 'indefinite' },
+    term_months: { type: 'text', rule: 'termMonths', mode: 'numeric', showIf: function (d) { return d.term_kind === 'fixed'; } },
+    work_start: { type: 'date' },
+    probation: { type: 'text', rule: 'probation', mode: 'numeric', init: '0' },
+    manager: { type: 'check', optional: true },
+    hours: { type: 'text', rule: 'hours', mode: 'numeric', init: '40' },
+    regime: { type: 'select', options: ['five', 'six'], init: 'five' },
+    salary: { type: 'text', rule: 'money', mode: 'decimal' },
+    pay_day: { type: 'text', rule: 'payDay', mode: 'numeric' },
+    leave_contract: { type: 'text', rule: 'leaveContract', mode: 'numeric', init: '24' },
+
+    year_from: { type: 'date' },
+    year_to: { type: 'date', rule: 'workYear' },
+    leave_kind: { type: 'select', options: ['full', 'part'], init: 'full' },
+    leave_days: { type: 'text', rule: 'leaveDays', mode: 'numeric' },
+    leave_start: { type: 'date' },
+    holidays: { type: 'text', rule: 'nonNegInt', mode: 'numeric', init: '0' },
+    leave_basis: { type: 'text', optional: true },
+
+    addressee: { type: 'text' },
+    cert_salary: { type: 'text', rule: 'money', mode: 'decimal', optional: true },
+
+    term_date: { type: 'date' },
+    unused_days: { type: 'text', rule: 'nonNegInt', mode: 'numeric', optional: true }
+  };
+
+  var IP_SHORT = ['ip_name', 'ip_fio', 'ip_iin', 'ip_addr'];
+  var IP_BANK = IP_SHORT.concat(['ip_iik', 'ip_bank', 'ip_bik']);
+  var CP = ['cp_name', 'cp_bin', 'cp_addr'];
+
+  /* ---------- Документы ---------- */
+  var DOCS = {
+    services: {
+      cat: 'contracts', icon: 'contract',
+      steps: [
+        { key: 's.general', fields: ['number', 'date', 'city'] },
+        { key: 's.parties', fields: IP_BANK.concat(CP, ['cp_rep']) },
+        { key: 's.subject', fields: ['subject', 'start', 'end', 'third'] },
+        { key: 's.payment', fields: ['price', 'vat', 'pay_order', 'pay_days', 'penalty'], summary: 'price' }
+      ]
+    },
+    invoice: {
+      cat: 'accounting', icon: 'invoice',
+      steps: [
+        { key: 's.partiesInv', fields: ['number', 'date'].concat(IP_BANK, CP, ['basis']) },
+        { key: 's.items', fields: ['items', 'vat', 'due'], summary: 'items' }
+      ]
+    },
+    act: {
+      cat: 'accounting', icon: 'act',
+      steps: [
+        { key: 's.partiesAct', fields: ['number', 'date'].concat(IP_SHORT, ['ip_contact'], CP, ['cp_contact', 'contract_no', 'contract_date']) },
+        { key: 's.works', fields: ['items_act', 'vat'], summary: 'items' }
+      ]
+    },
+    employment: {
+      cat: 'hr', icon: 'contract',
+      steps: [
+        { key: 's.general', fields: ['number', 'date', 'city'] },
+        { key: 's.parties', fields: IP_SHORT.concat(['ip_doc', 'w_fio', 'w_iin', 'w_addr', 'w_doc', 'age16']) },
+        { key: 's.job', fields: ['position', 'place', 'term_kind', 'term_months', 'work_start', 'probation', 'manager'] },
+        { key: 's.time', fields: ['hours', 'regime', 'salary', 'pay_day', 'leave_contract'] }
+      ]
+    },
+    hire: {
+      cat: 'hr', icon: 'order',
+      steps: [
+        { key: 's.orderReq', fields: ['number', 'date', 'city', 'ip_name', 'ip_fio'] },
+        { key: 's.workerCond', fields: ['w_fio', 'position', 'work_start', 'salary', 'probation', 'manager', 'contract_no', 'contract_date'] }
+      ]
+    },
+    leave: {
+      cat: 'hr', icon: 'order',
+      steps: [
+        { key: 's.orderReq', fields: ['number', 'date', 'city', 'ip_name', 'ip_fio'] },
+        { key: 's.leave', fields: ['w_fio', 'position', 'year_from', 'year_to', 'leave_kind', 'leave_days', 'leave_start', 'holidays', 'leave_basis'], summary: 'leave' }
+      ]
+    },
+    certificate: {
+      cat: 'hr', icon: 'cert',
+      steps: [
+        { key: 's.certReq', fields: ['number', 'date', 'city', 'ip_name', 'ip_fio', 'ip_iin', 'ip_addr', 'addressee'] },
+        { key: 's.certInfo', fields: ['w_fio', 'position', 'work_start', 'cert_salary'] }
+      ]
+    },
+    termination: {
+      cat: 'hr', icon: 'order',
+      steps: [
+        { key: 's.orderReq', fields: ['number', 'date', 'city', 'ip_name', 'ip_fio'] },
+        { key: 's.termination', fields: ['w_fio', 'position', 'contract_no', 'contract_date', 'term_date', 'unused_days'] }
+      ]
+    }
+  };
+
+  /* ---------- Помощники текста ---------- */
+  var BLANK_DATE = '___ __________ 20__ года';
+  var MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+  function longDate(iso) {
+    if (!L.parseISO(iso)) return BLANK_DATE;
+    return iso.slice(8, 10) + ' ' + MONTHS[+iso.slice(5, 7) - 1] + ' ' + iso.slice(0, 4) + ' года';
+  }
+  var fd = longDate;
+  function v(x) { return L.isEmpty(x) ? '____________' : String(x).trim(); }
+  function money(t) { return L.fmtMoney(t) + ' тенге'; }
+  function monthsWord(n) {
+    var a = n % 100, b = n % 10;
+    if (a > 10 && a < 20) return 'месяцев';
+    if (b === 1) return 'месяц';
+    if (b >= 2 && b <= 4) return 'месяца';
+    return 'месяцев';
+  }
+  function daysWord(n) {
+    var a = n % 100, b = n % 10;
+    if (a > 10 && a < 20) return 'календарных дней';
+    if (b === 1) return 'календарный день';
+    if (b >= 2 && b <= 4) return 'календарных дня';
+    return 'календарных дней';
+  }
+  function hoursWord(n) {
+    var a = n % 100, b = n % 10;
+    if (a > 10 && a < 20) return 'часов';
+    if (b === 1) return 'час';
+    if (b >= 2 && b <= 4) return 'часа';
+    return 'часов';
+  }
+  // Должность внутри фразы: со строчной буквы, аббревиатуры не трогаем.
+  function pos(d) {
+    var s = v(d.position);
+    return /^[А-ЯЁA-Z][а-яёa-z]/.test(s) ? s.charAt(0).toLowerCase() + s.slice(1) : s;
+  }
+  function workDaysWord(n) { return L.plural(n, ['рабочий день', 'рабочих дня', 'рабочих дней']); }
+  // Скобки вокруг значения прописью заданы здесь, чтобы менять их в одном месте.
+  function say(text) { return '(' + text + ')'; }
+  function num(value, unitFn) {
+    var n = L.parseInt10(value);
+    if (isNaN(n)) return '____ ' + unitFn(0);
+    return n + ' ' + say(L.intWordsRu(n)) + ' ' + unitFn(n);
+  }
+  function moneyW(t) { return money(t) + ' ' + say(L.moneyWordsRu(t)); }
+  function percentW(value) {
+    var s = String(value).trim(), n = L.parseInt10(s);
+    if (isNaN(n)) return s + ' ' + say(L.decimalWordsRu(s)) + ' процента';
+    return n + ' ' + say(L.intWordsRu(n)) + ' ' + L.plural(n, ['процент', 'процента', 'процентов']);
+  }
+  var VAT_TEXT = percentW(String(Math.round(L.VAT_RATE * 100)));
+  var ORDINALS = ['', 'первое', 'второе', 'третье', 'четвёртое', 'пятое', 'шестое', 'седьмое', 'восьмое', 'девятое', 'десятое'];
+  function initials(fio) {
+    // «улы», «кызы» и подобные части отчества инициалом не становятся.
+    var p = String(fio || '').trim().split(/\s+/).filter(function (x) {
+      return x && !/^(улы|ұлы|уулу|кызы|қызы|гызы|оглы|оглу)$/i.test(x);
+    });
+    if (!p.length) return '____________';
+    return p[0] + (p.length > 1 ? ' ' + p.slice(1, 3).map(function (x) { return x.charAt(0).toUpperCase() + '.'; }).join('') : '');
+  }
+
+  var T = function (text) { return { k: 'title', text: text }; };
+  var C = function (text, bold) { return { k: 'center', text: text, bold: !!bold }; };
+  var R = function (l, r) { return { k: 'row', left: l, right: r }; };
+  var H = function (text) { return { k: 'h', text: text }; };
+  var P = function (text, opt) { return Object.assign({ k: 'p', text: text }, opt || {}); };
+  var G = function () { return { k: 'gap' }; };
+
+  // Название и ФИО идут рядом: название может отличаться от ФИО предпринимателя.
+  function ipIntro(d) {
+    return v(d.ip_name) + ' (индивидуальный предприниматель ' + v(d.ip_fio) + ')';
+  }
+  // Если приставка уже введена («г. Алматы», «с. Аксу»), вторую не добавляем.
+  function place(d) {
+    var s = v(d.city);
+    if (L.isEmpty(d.city) || /^(г\.|с\.|п\.|пос\.|пгт|ст\.|город|село|посёлок|поселок|аул)\s*/i.test(s)) return L.isEmpty(d.city) ? 'г. ' + s : s;
+    return 'г. ' + s;
+  }
+  function ipReq(d) {
+    return [v(d.ip_name), 'ФИО: ' + v(d.ip_fio), 'ИИН: ' + v(d.ip_iin), 'Адрес: ' + v(d.ip_addr)];
+  }
+  function bankReq(d) {
+    return ['ИИК: ' + v(d.ip_iik), 'Банк: ' + v(d.ip_bank), 'БИК: ' + v(d.ip_bik)];
+  }
+  function cpReq(d) {
+    return [v(d.cp_name), 'БИН/ИИН: ' + v(d.cp_bin), 'Адрес: ' + v(d.cp_addr)];
+  }
+  function orderHead(d, topic) {
+    return [
+      C(v(d.ip_name), true),
+      G(),
+      T('ПРИКАЗ'),
+      R(fd(d.date), '№ ' + v(d.number) + '-к'),
+      C(place(d)),
+      G(),
+      P(topic, { bold: true })
+    ];
+  }
+  function orderSign(d, withWorker) {
+    var b = [G(), R('Индивидуальный предприниматель', '______________ ' + initials(d.ip_fio)), P('М.П. (при наличии)')];
+    if (withWorker) b.push(G(), R('С приказом ознакомлен(а):', '______________ ' + initials(d.w_fio)), R('', 'Дата: ' + BLANK_DATE));
+    return b;
+  }
+
+  /* ---------- Шаблоны ---------- */
+  var BUILD = {
+    services: function (d) {
+      var t = L.totals(L.toTiyn(d.price) || 0, d.vat);
+      var pay = d.vat
+        ? 'Стоимость услуг составляет ' + moneyW(t.subtotal) + ', НДС ' + VAT_TEXT + ' — ' + moneyW(t.vat) + '. Всего к оплате: ' + moneyW(t.total) + '.'
+        : 'Стоимость услуг составляет ' + moneyW(t.total) + ', без НДС.';
+      var when = d.pay_order === 'prepay' ? 'со дня заключения настоящего договора' : 'со дня подписания акта выполненных работ (оказанных услуг)';
+      return [
+        T('ДОГОВОР ОКАЗАНИЯ УСЛУГ № ' + v(d.number)),
+        R(place(d), longDate(d.date)),
+        G(),
+        P(ipIntro(d) + ', ИИН ' + v(d.ip_iin) + ', далее — «Исполнитель», с одной стороны, и ' + v(d.cp_name) + ', БИН/ИИН ' + v(d.cp_bin) + (L.isEmpty(d.cp_rep) ? '' : ', в лице ' + d.cp_rep.trim()) + ', далее — «Заказчик», с другой стороны, заключили настоящий договор о следующем.'),
+        H('1. Предмет договора'),
+        P('1.1. Исполнитель обязуется по заданию Заказчика оказать услуги: ' + v(d.subject) + ', а Заказчик обязуется оплатить эти услуги.'),
+        P('1.2. Услуги оказываются в период с ' + fd(d.start) + ' по ' + fd(d.end) + '.'),
+        P(d.third ? '1.3. Исполнитель вправе привлекать к оказанию услуг третьих лиц и отвечает перед Заказчиком за их действия.' : '1.3. Исполнитель оказывает услуги лично.'),
+        H('2. Права и обязанности сторон'),
+        P('2.1. Исполнитель обязан оказать услуги в согласованный срок и по окончании оказания услуг представить Заказчику акт выполненных работ (оказанных услуг).'),
+        P('2.2. Заказчик обязан предоставить сведения, необходимые для оказания услуг, принять оказанные услуги и оплатить их в порядке, установленном настоящим договором.'),
+        H('3. Стоимость и порядок оплаты'),
+        P('3.1. ' + pay),
+        P('3.2. Срок оплаты услуг — ' + num(d.pay_days, workDaysWord) + ' ' + when + '. Оплата производится путём перечисления денег на банковский счёт Исполнителя.'),
+        H('4. Приёмка услуг'),
+        P('4.1. Факт оказания услуг подтверждается актом выполненных работ (оказанных услуг), подписанным сторонами.'),
+        H('5. Отказ от исполнения договора'),
+        P('5.1. Заказчик вправе отказаться от исполнения настоящего договора при условии оплаты Исполнителю фактически понесённых им расходов.'),
+        P('5.2. Исполнитель вправе отказаться от исполнения обязательств по настоящему договору в порядке, предусмотренном статьёй 686 Гражданского кодекса Республики Казахстан.'),
+        H('6. Ответственность сторон'),
+        P(L.isEmpty(d.penalty)
+          ? '6.1. За неисполнение или ненадлежащее исполнение обязательств стороны несут ответственность в соответствии с законодательством Республики Казахстан.'
+          : '6.1. За просрочку исполнения обязательства виновная сторона уплачивает другой стороне неустойку в размере ' + percentW(d.penalty) + ' от суммы неисполненного обязательства за каждый день просрочки.'),
+        H('7. Заключительные положения'),
+        P('7.1. Договор вступает в силу со дня подписания и действует до полного исполнения сторонами своих обязательств.'),
+        P('7.2. Изменения к договору действительны, если совершены в письменной форме и подписаны сторонами.'),
+        P('7.3. Споры разрешаются путём переговоров, а при недостижении согласия — в суде в соответствии с законодательством Республики Казахстан.'),
+        P('7.4. Договор составлен в двух экземплярах, по одному для каждой стороны.'),
+        H('8. Реквизиты и подписи сторон'),
+        {
+          k: 'cols',
+          left: ['Исполнитель'].concat(ipReq(d), bankReq(d)),
+          right: ['Заказчик'].concat(cpReq(d)),
+          signLeft: ['______________ ' + initials(d.ip_fio), 'М.П. (при наличии)'],
+          signRight: ['______________', 'М.П. (при наличии)']
+        }
+      ];
+    },
+
+    invoice: function (d) {
+      var items = d.items || [];
+      var t = L.calcItems(items, d.vat);
+      var rows = items.map(function (it, i) {
+        return [String(i + 1), v(it.name), v(it.unit), String(it.qty || '').trim(), L.fmtMoney(L.toTiyn(it.price) || 0), L.fmtMoney(L.itemCost(it))];
+      });
+      var out = [
+        T('СЧЁТ НА ОПЛАТУ № ' + v(d.number) + ' от ' + fd(d.date)),
+        G(),
+        P('Поставщик: ' + ipIntro(d) + ', ИИН ' + v(d.ip_iin) + ', адрес: ' + v(d.ip_addr) + '.'),
+        P('Банковские реквизиты: ИИК ' + v(d.ip_iik) + ', ' + v(d.ip_bank) + ', БИК ' + v(d.ip_bik) + '.'),
+        P('Покупатель: ' + v(d.cp_name) + ', БИН/ИИН ' + v(d.cp_bin) + ', адрес: ' + v(d.cp_addr) + '.')
+      ];
+      if (!L.isEmpty(d.basis)) out.push(P('Основание: ' + d.basis.trim() + '.'));
+      out.push(G(), {
+        k: 'table', widths: [6, 40, 10, 10, 17, 17], align: ['c', 'l', 'c', 'r', 'r', 'r'],
+        head: ['№', 'Наименование', 'Ед. изм.', 'Кол-во', 'Цена, тенге', 'Сумма, тенге'], rows: rows
+      }, G());
+      out.push(P('Итого: ' + moneyW(t.subtotal) + '.'));
+      out.push(P(d.vat ? 'НДС ' + VAT_TEXT + ': ' + moneyW(t.vat) + '.' : 'Без НДС.'));
+      out.push(P('Всего к оплате: ' + moneyW(t.total) + '.', { bold: true }));
+      out.push(P('Срок оплаты: до ' + fd(d.due) + '.'));
+      out.push(G(), R('Индивидуальный предприниматель', '______________ ' + initials(d.ip_fio)), P('М.П. (при наличии)'));
+      return out;
+    },
+
+    act: function (d) {
+      var items = d.items_act || [];
+      var t = L.calcItems(items, d.vat);
+      var rows = items.map(function (it, i) {
+        return [String(i + 1), v(it.name), L.isEmpty(it.done) ? '' : fd(it.done), '', v(it.unit), String(it.qty || '').trim(), L.fmtMoney(L.toTiyn(it.price) || 0), L.fmtMoney(L.itemCost(it))];
+      });
+      var qty = items.reduce(function (a, it) { return a + (L.parseNum(it.qty) || 0); }, 0);
+      rows.push(['', '', '', '', 'Итого', String(Math.round(qty * 1000) / 1000).replace('.', ','), 'х', L.fmtMoney(t.subtotal)]);
+      var contact = function (x) { return L.isEmpty(x) ? '' : ', ' + String(x).trim(); };
+      var out = [
+        { k: 'small', text: 'Форма Р-1', right: true },
+        P('Заказчик: ' + v(d.cp_name) + ', ' + v(d.cp_addr) + contact(d.cp_contact) + '. ИИН/БИН: ' + v(d.cp_bin) + '.'),
+        P('Исполнитель: ' + ipIntro(d) + ', ' + v(d.ip_addr) + contact(d.ip_contact) + '. ИИН/БИН: ' + v(d.ip_iin) + '.'),
+        P('Договор (контракт) № ' + v(d.contract_no) + ' от ' + longDate(d.contract_date)),
+        G(),
+        R('Номер документа: ' + v(d.number), 'Дата составления: ' + fd(d.date)),
+        T('АКТ ВЫПОЛНЕННЫХ РАБОТ (ОКАЗАННЫХ УСЛУГ)*'),
+        {
+          k: 'table', small: true, widths: [9, 21, 11, 16, 10, 11, 10, 12], align: ['c', 'l', 'c', 'l', 'c', 'r', 'r', 'r'],
+          headTop: [
+            { t: 'Номер по порядку', r: 2 },
+            { t: 'Наименование работ (услуг) (в разрезе их подвидов в соответствии с технической спецификацией, заданием, графиком выполнения работ (услуг) при их наличии)', r: 2 },
+            { t: 'Дата выполнения работ (оказания услуг)**', r: 2 },
+            { t: 'Сведения об отчете о научных исследованиях, маркетинговых, консультационных и прочих услугах (дата, номер, количество страниц) (при их наличии)***', r: 2 },
+            { t: 'Единица измерения', r: 2 },
+            { t: 'Выполнено работ (оказано услуг)', c: 3 }
+          ],
+          headSub: ['количество', 'цена за единицу', 'стоимость'],
+          numbers: ['1', '2', '3', '4', '5', '6', '7', '8'], rows: rows
+        },
+        G()
+      ];
+      if (d.vat) out.push(P('НДС ' + VAT_TEXT + ': ' + moneyW(t.vat) + '.'));
+      out.push(P('Всего по акту: ' + moneyW(t.total) + '.', { bold: true }));
+      out.push(P('Сведения об использовании запасов, полученных от заказчика: ____________'));
+      out.push(P('Приложение: перечень документации, в том числе отчет(ы) о маркетинговых, научных исследованиях, консультационных и прочих услугах (обязательны при его (их) наличии) на ____ страницах.'));
+      out.push(G(), {
+        k: 'cols',
+        left: ['Сдал (Исполнитель)'],
+        right: ['Принял (Заказчик)'],
+        signLeft: ['______ / ______ / ' + initials(d.ip_fio), 'должность / подпись / расшифровка подписи', 'М.П. (при наличии)'],
+        signRight: ['______ / ______ / ______', 'должность / подпись / расшифровка подписи', 'М.П. (при наличии)', 'Дата подписания (принятия) работ (услуг): ' + BLANK_DATE]
+      }, G());
+      out.push({ k: 'small', text: '* Применяется для приемки-передачи выполненных работ (оказанных услуг), за исключением строительно-монтажных работ.' });
+      out.push({ k: 'small', text: '** Заполняется в случае, если даты выполненных работ (оказанных услуг) приходятся на различные периоды, а также в случае, если даты выполнения работ (оказания услуг) и даты подписания (принятия) работ (услуг) различны.' });
+      out.push({ k: 'small', text: '*** Заполняется в случае наличия отчета о научных исследованиях, маркетинговых, консультационных и прочих услугах.' });
+      return out;
+    },
+
+    employment: function (d) {
+      var prob = L.parseInt10(d.probation) || 0, payDay = L.parseInt10(d.pay_day);
+      var term = d.term_kind === 'fixed'
+        ? 'на определённый срок: ' + num(d.term_months, monthsWord)
+        : 'на неопределённый срок';
+      var reg = d.regime === 'six' ? 'шестидневная рабочая неделя с одним выходным днём' : 'пятидневная рабочая неделя с двумя выходными днями';
+      var sal = L.toTiyn(d.salary) || 0;
+      return [
+        T('ТРУДОВОЙ ДОГОВОР № ' + v(d.number)),
+        R(place(d), longDate(d.date)),
+        G(),
+        P(ipIntro(d) + ', далее — «Работодатель», с одной стороны, и ' + v(d.w_fio) + ', далее — «Работник», с другой стороны, заключили настоящий трудовой договор о следующем.'),
+        H('1. Трудовая функция и место работы'),
+        P('1.1. Работник принимается на работу по должности: ' + pos(d) + '.'),
+        P('1.2. Место выполнения работы: ' + v(d.place) + '.'),
+        H('2. Срок договора и начало работы'),
+        P('2.1. Договор заключён ' + term + '.'),
+        P('2.2. Дата начала работы: ' + fd(d.work_start) + '.'),
+        P(prob > 0 ? '2.3. Работнику устанавливается испытательный срок: ' + num(d.probation, monthsWord) + '.' : '2.3. Испытательный срок не устанавливается.'),
+        H('3. Рабочее время и время отдыха'),
+        P('3.1. Работнику устанавливается ' + reg + '. Продолжительность рабочего времени — ' + num(d.hours, hoursWord) + ' в неделю.'),
+        P('3.2. Работнику предоставляется основной оплачиваемый ежегодный трудовой отпуск. Его продолжительность — ' + num(d.leave_contract, daysWord) + '.'),
+        H('4. Оплата труда'),
+        P('4.1. Работнику устанавливается оклад ' + moneyW(sal) + ' в месяц.'),
+        P('4.2. Заработная плата выплачивается в национальной валюте не реже одного раза в месяц. День выплаты: ' + (ORDINALS[payDay] ? payDay + ' ' + say(ORDINALS[payDay]) : '____') + ' число месяца, следующего за отработанным. При совпадении дня выплаты с выходным или праздничным днём выплата производится накануне.'),
+        H('5. Условия труда'),
+        P('5.1. Работа не относится к тяжёлым работам и работам с вредными и (или) опасными условиями труда.'),
+        H('6. Права и обязанности Работника'),
+        P('6.1. Работник имеет права, предусмотренные Трудовым кодексом Республики Казахстан, в том числе на своевременную оплату труда, отдых и безопасные условия труда.'),
+        P('6.2. Работник обязан добросовестно выполнять трудовые обязанности, соблюдать трудовую дисциплину и требования безопасности и охраны труда, бережно относиться к имуществу Работодателя.'),
+        H('7. Права и обязанности Работодателя'),
+        P('7.1. Работодатель вправе требовать от Работника исполнения условий настоящего договора и применять меры поощрения и дисциплинарного взыскания в порядке, установленном законодательством Республики Казахстан.'),
+        P('7.2. Работодатель обязан предоставлять работу по договору, обеспечивать безопасные условия труда, своевременно выплачивать заработную плату и предоставлять отпуск.'),
+        H('8. Изменение и прекращение договора'),
+        P('8.1. Изменения и дополнения вносятся в письменной форме дополнительным соглашением сторон.'),
+        P('8.2. Договор прекращается по основаниям и в порядке, установленным Трудовым кодексом Республики Казахстан.'),
+        H('9. Ответственность сторон'),
+        P('9.1. Стороны несут ответственность за неисполнение условий договора в соответствии с законодательством Республики Казахстан.'),
+        H('10. Заключительные положения'),
+        P('10.1. Договор составлен в письменной форме в двух экземплярах и подписан сторонами. По одному экземпляру хранится у Работника и Работодателя.'),
+        H('11. Реквизиты и подписи сторон'),
+        {
+          k: 'cols',
+          left: ['Работодатель', v(d.ip_name), 'ФИО: ' + v(d.ip_fio), 'ИИН: ' + v(d.ip_iin), 'Адрес постоянного места жительства, регистрация: ' + v(d.ip_addr), 'Документ, удостоверяющий личность: ' + v(d.ip_doc)],
+          right: ['Работник', v(d.w_fio), 'ИИН: ' + v(d.w_iin), 'Адрес постоянного места жительства, регистрация: ' + v(d.w_addr), 'Документ, удостоверяющий личность: ' + v(d.w_doc)],
+          signLeft: ['______________ ' + initials(d.ip_fio), 'М.П. (при наличии)'],
+          signRight: ['______________ ' + initials(d.w_fio), 'Экземпляр договора получен: ______________']
+        }
+      ];
+    },
+
+    hire: function (d) {
+      var prob = L.parseInt10(d.probation) || 0, sal = L.toTiyn(d.salary) || 0;
+      var text = '1. Принять на работу работника ' + v(d.w_fio) + ' по должности «' + pos(d) + '» с ' + fd(d.work_start) + ' с окладом ' + moneyW(sal) + ' в месяц';
+      text += prob > 0 ? ' и испытательным сроком ' + num(d.probation, monthsWord) + '.' : ' без испытательного срока.';
+      return orderHead(d, 'О приёме на работу').concat([
+        G(),
+        P('На основании трудового договора № ' + v(d.contract_no) + ' от ' + fd(d.contract_date) + ':'),
+        { k: 'order' },
+        P(text)
+      ], orderSign(d, true));
+    },
+
+    leave: function (d) {
+      var r = L.leaveDates(d.leave_start, d.leave_days, d.holidays);
+      var kind = d.leave_kind === 'part' ? 'часть оплачиваемого ежегодного трудового отпуска' : 'оплачиваемый ежегодный трудовой отпуск';
+      var out = orderHead(d, 'О предоставлении оплачиваемого ежегодного трудового отпуска').concat([
+        G(),
+        { k: 'order' },
+        P('1. Предоставить работнику ' + v(d.w_fio) + ' (должность: ' + pos(d) + ') ' + kind + ' за рабочий год с ' + fd(d.year_from) + ' по ' + fd(d.year_to) + '. Продолжительность отпуска: ' + num(d.leave_days, daysWord) + ', с ' + fd(d.leave_start) + ' по ' + fd(r && r.end) + '. Дата выхода на работу: ' + fd(r && r.back) + '.'),
+        P('2. Произвести оплату отпуска в сроки, установленные пунктом 4 статьи 92 Трудового кодекса Республики Казахстан.')
+      ]);
+      if (!L.isEmpty(d.leave_basis)) out.push(P('Основание: ' + d.leave_basis.trim() + '.'));
+      return out.concat(orderSign(d, true));
+    },
+
+    certificate: function (d) {
+      var out = [
+        C(v(d.ip_name), true),
+        C('ФИО: ' + v(d.ip_fio) + ', ИИН ' + v(d.ip_iin) + ', ' + v(d.ip_addr)),
+        G(),
+        R(fd(d.date) + ' № ' + v(d.number), v(d.addressee)),
+        C(place(d)),
+        G(),
+        T('СПРАВКА'),
+        P('с места работы', { center: true }),
+        G(),
+        P('Настоящая справка подтверждает, что ' + v(d.w_fio) + ' работает у ' + v(d.ip_name) + ' по должности «' + pos(d) + '» с ' + fd(d.work_start) + ' по настоящее время.')
+      ];
+      if (!L.isEmpty(d.cert_salary)) {
+        var s = L.toTiyn(d.cert_salary) || 0;
+        out.push(P('Размер оклада: ' + moneyW(s) + ' в месяц.'));
+      }
+      out.push(G(), R('Индивидуальный предприниматель', '______________ ' + initials(d.ip_fio)), P('М.П. (при наличии)'));
+      return out;
+    },
+
+    termination: function (d) {
+      var out = orderHead(d, 'О прекращении трудового договора по соглашению сторон').concat([
+        G(),
+        P('В соответствии с подпунктом 1) статьи 49 и статьёй 50 Трудового кодекса Республики Казахстан:'),
+        { k: 'order' },
+        P('1. Прекратить трудовой договор № ' + v(d.contract_no) + ' от ' + fd(d.contract_date) + ' с работником ' + v(d.w_fio) + ' (должность: ' + pos(d) + ') по соглашению сторон ' + fd(d.term_date) + '.'),
+        P('2. Произвести выплату сумм, причитающихся работнику, не позднее трёх рабочих дней после прекращения трудового договора.')
+      ]);
+      var u = L.parseInt10(d.unused_days);
+      if (u > 0) out.push(P('3. Произвести компенсационную выплату за ' + num(d.unused_days, daysWord) + ' неиспользованного оплачиваемого ежегодного трудового отпуска.'));
+      return out.concat(orderSign(d, true));
+    }
+  };
+
+  // Казахские шаблоны лежат в js/templates-kk.js и регистрируются как BUILD_KK.
+  function build(code, data, lang) {
+    var kk = lang === 'kk' && api.BUILD_KK;
+    return (kk || BUILD)[code](data || {});
+  }
+
+  var api = { FIELDS: FIELDS, DOCS: DOCS, build: build, helpers: { initials: initials, pos: pos } };
+  root.DocumTemplates = api;
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+})(typeof window !== 'undefined' ? window : globalThis);
