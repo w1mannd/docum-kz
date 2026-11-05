@@ -186,6 +186,7 @@
   function warn(key) { return { type: 'warn', key: key }; }
 
   var RULES = {
+    idNum: function (v) { return /^\d{9}$/.test(String(v).trim()) ? null : err('e.idNum'); },
     iin: function (v) { return /^\d{12}$/.test(String(v).trim()) ? null : err('e.iin'); },
     money: function (v) {
       var t = toTiyn(v);

@@ -16,7 +16,8 @@
     ip_iin: { type: 'text', rule: 'iin', mode: 'numeric', max: 12 },
     ip_addr: { type: 'text' },
     ip_contact: { type: 'text', optional: true },
-    ip_doc: { type: 'text' },
+    ip_doc_no: { type: 'text', rule: 'idNum', mode: 'numeric', max: 9 },
+    ip_doc_date: { type: 'date' },
     ip_iik: { type: 'text' },
     ip_bank: { type: 'text' },
     ip_bik: { type: 'text' },
@@ -48,7 +49,8 @@
     w_fio: { type: 'text', group: 'g.worker' },
     w_iin: { type: 'text', rule: 'iin', mode: 'numeric', max: 12 },
     w_addr: { type: 'text' },
-    w_doc: { type: 'text' },
+    w_doc_no: { type: 'text', rule: 'idNum', mode: 'numeric', max: 9 },
+    w_doc_date: { type: 'date' },
     age16: { type: 'check', rule: 'age' },
     position: { type: 'text' },
     place: { type: 'text' },
@@ -111,7 +113,7 @@
       cat: 'hr', icon: 'contract',
       steps: [
         { key: 's.general', fields: ['number', 'date', 'city'] },
-        { key: 's.parties', fields: IP_SHORT.concat(['ip_doc', 'w_fio', 'w_iin', 'w_addr', 'w_doc', 'age16']) },
+        { key: 's.parties', fields: IP_SHORT.concat(['ip_doc_no', 'ip_doc_date', 'w_fio', 'w_iin', 'w_addr', 'w_doc_no', 'w_doc_date', 'age16']) },
         { key: 's.job', fields: ['position', 'place', 'term_kind', 'term_months', 'work_start', 'probation', 'manager'] },
         { key: 's.time', fields: ['hours', 'regime', 'salary', 'pay_day', 'leave_contract'] }
       ]
@@ -416,8 +418,8 @@
         H('11. Реквизиты и подписи сторон'),
         {
           k: 'cols',
-          left: ['Работодатель', v(d.ip_name), 'ФИО: ' + v(d.ip_fio), 'ИИН: ' + v(d.ip_iin), 'Адрес постоянного места жительства, регистрация: ' + v(d.ip_addr), 'Документ, удостоверяющий личность: ' + v(d.ip_doc)],
-          right: ['Работник', v(d.w_fio), 'ИИН: ' + v(d.w_iin), 'Адрес постоянного места жительства, регистрация: ' + v(d.w_addr), 'Документ, удостоверяющий личность: ' + v(d.w_doc)],
+          left: ['Работодатель', v(d.ip_name), 'ФИО: ' + v(d.ip_fio), 'ИИН: ' + v(d.ip_iin), 'Адрес постоянного места жительства, регистрация: ' + v(d.ip_addr), 'Удостоверение личности № ' + v(d.ip_doc_no) + ', выдано ' + fd(d.ip_doc_date)],
+          right: ['Работник', v(d.w_fio), 'ИИН: ' + v(d.w_iin), 'Адрес постоянного места жительства, регистрация: ' + v(d.w_addr), 'Удостоверение личности № ' + v(d.w_doc_no) + ', выдано ' + fd(d.w_doc_date)],
           signLeft: ['______________ ' + initials(d.ip_fio), 'М.П. (при наличии)'],
           signRight: ['______________ ' + initials(d.w_fio), 'Экземпляр договора получен: ______________']
         }
