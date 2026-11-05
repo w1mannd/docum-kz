@@ -46,7 +46,8 @@
       n.setAttribute('aria-label', window.t(n.getAttribute('data-i18n-label')));
     });
     document.querySelectorAll('[data-adilet]').forEach(function (a) {
-      a.href = 'https://adilet.zan.kz/' + (lang === 'kk' ? 'kaz' : 'rus') + '/docs/' + a.getAttribute('data-adilet');
+      var id = a.getAttribute('data-adilet');
+      a.href = 'https://adilet.zan.kz/' + (lang === 'kk' ? 'kaz' : 'rus') + (id ? '/docs/' + id : '');
     });
     document.querySelectorAll('.lang-btn').forEach(function (b) {
       b.setAttribute('aria-pressed', String(b.getAttribute('data-lang') === lang));
