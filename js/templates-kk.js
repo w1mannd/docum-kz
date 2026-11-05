@@ -38,7 +38,7 @@
   }
   function ipIntro(d) { return v(d.ip_name) + ' (жеке кәсіпкер ' + v(d.ip_fio) + ')'; }
   function ipReq(d) {
-    return [v(d.ip_name), 'Т.А.Ә.: ' + v(d.ip_fio), 'ЖСН: ' + v(d.ip_iin), 'Мекенжайы: ' + v(d.ip_addr)];
+    return [v(d.ip_name), 'Т.А.Ә.: ' + v(d.ip_fio), 'ЖСН: ' + v(d.ip_iin), 'Орналасқан жері: ' + v(d.ip_addr)];
   }
   function bankReq(d) { return ['ЖСК: ' + v(d.ip_iik), 'Банк: ' + v(d.ip_bank), 'БСК: ' + v(d.ip_bik)]; }
   function cpReq(d) { return [v(d.cp_name), 'БСН/ЖСН: ' + v(d.cp_bin), 'Мекенжайы: ' + v(d.cp_addr)]; }
@@ -119,7 +119,7 @@
         T('ТӨЛЕМ ШОТЫ № ' + v(d.number)),
         C(fd(d.date)),
         G(),
-        P('Жеткізуші: ' + ipIntro(d) + ', ЖСН ' + v(d.ip_iin) + ', мекенжайы: ' + v(d.ip_addr) + '.'),
+        P('Жеткізуші: ' + ipIntro(d) + ', ЖСН ' + v(d.ip_iin) + ', орналасқан жері: ' + v(d.ip_addr) + '.'),
         P('Банк деректемелері: ЖСК ' + v(d.ip_iik) + ', ' + v(d.ip_bank) + ', БСК ' + v(d.ip_bik) + '.'),
         P('Сатып алушы: ' + v(d.cp_name) + ', БСН/ЖСН ' + v(d.cp_bin) + ', мекенжайы: ' + v(d.cp_addr) + '.')
       ];
@@ -147,7 +147,7 @@
       var out = [
         { k: 'small', text: 'Ж-1 нысаны', right: true },
         P('Тапсырыс беруші: ' + v(d.cp_name) + ', ' + v(d.cp_addr) + contact(d.cp_contact) + '. ЖСН/БСН: ' + v(d.cp_bin) + '.'),
-        P('Орындаушы: ' + ipIntro(d) + ', ' + v(d.ip_addr) + contact(d.ip_contact) + '. ЖСН/БСН: ' + v(d.ip_iin) + '.'),
+        P('Орындаушы: ' + ipIntro(d) + ', орналасқан жері: ' + v(d.ip_addr) + contact(d.ip_contact) + '. ЖСН/БСН: ' + v(d.ip_iin) + '.'),
         P('Шарт (келісімшарт) № ' + v(d.contract_no) + ', ' + fd(d.contract_date)),
         G(),
         R('Құжат нөмірі: ' + v(d.number), 'Жасалған күні: ' + fd(d.date)),
@@ -285,7 +285,7 @@
         H('13. Тараптардың деректемелері мен қолдары'),
         {
           k: 'cols',
-          left: ['Жұмыс беруші', v(d.ip_name), 'Т.А.Ә.: ' + v(d.ip_fio), 'ЖСН: ' + v(d.ip_iin), 'Тұрақты тұрғылықты жерінің мекенжайы, тіркеуі: ' + v(d.ip_addr), 'Жеке куәлік № ' + v(d.ip_doc_no) + ', берілген күні: ' + fd(d.ip_doc_date)],
+          left: ['Жұмыс беруші', v(d.ip_name), 'Т.А.Ә.: ' + v(d.ip_fio), 'ЖСН: ' + v(d.ip_iin), 'Орналасқан жері: ' + v(d.ip_addr), 'Жеке куәлік № ' + v(d.ip_doc_no) + ', берілген күні: ' + fd(d.ip_doc_date)],
           right: ['Жұмыскер', v(d.w_fio), 'ЖСН: ' + v(d.w_iin), 'Тұрақты тұрғылықты жерінің мекенжайы, тіркеуі: ' + v(d.w_addr), 'Жеке куәлік № ' + v(d.w_doc_no) + ', берілген күні: ' + fd(d.w_doc_date)],
           signLeft: ['______________ ' + initials(d.ip_fio), MP],
           signRight: ['______________ ' + initials(d.w_fio), 'Шарттың данасын алдым: ______________']
@@ -321,7 +321,7 @@
     certificate: function (d) {
       var out = [
         C(v(d.ip_name), true),
-        C('Т.А.Ә.: ' + v(d.ip_fio) + ', ЖСН ' + v(d.ip_iin) + ', ' + v(d.ip_addr)),
+        C('Т.А.Ә.: ' + v(d.ip_fio) + ', ЖСН ' + v(d.ip_iin) + ', орналасқан жері: ' + v(d.ip_addr)),
         G(),
         R(fd(d.date) + ' № ' + v(d.number), v(d.addressee)),
         C(place(d)),

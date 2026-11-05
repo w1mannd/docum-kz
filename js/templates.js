@@ -227,7 +227,7 @@
     return 'г. ' + s;
   }
   function ipReq(d) {
-    return [v(d.ip_name), 'ФИО: ' + v(d.ip_fio), 'ИИН: ' + v(d.ip_iin), 'Адрес: ' + v(d.ip_addr)];
+    return [v(d.ip_name), 'ФИО: ' + v(d.ip_fio), 'ИИН: ' + v(d.ip_iin), 'Место нахождения: ' + v(d.ip_addr)];
   }
   function bankReq(d) {
     return ['ИИК: ' + v(d.ip_iik), 'Банк: ' + v(d.ip_bank), 'БИК: ' + v(d.ip_bik)];
@@ -309,7 +309,7 @@
       var out = [
         T('СЧЁТ НА ОПЛАТУ № ' + v(d.number) + ' от ' + fd(d.date)),
         G(),
-        P('Поставщик: ' + ipIntro(d) + ', ИИН ' + v(d.ip_iin) + ', адрес: ' + v(d.ip_addr) + '.'),
+        P('Поставщик: ' + ipIntro(d) + ', ИИН ' + v(d.ip_iin) + ', место нахождения: ' + v(d.ip_addr) + '.'),
         P('Банковские реквизиты: ИИК ' + v(d.ip_iik) + ', ' + v(d.ip_bank) + ', БИК ' + v(d.ip_bik) + '.'),
         P('Покупатель: ' + v(d.cp_name) + ', БИН/ИИН ' + v(d.cp_bin) + ', адрес: ' + v(d.cp_addr) + '.')
       ];
@@ -338,7 +338,7 @@
       var out = [
         { k: 'small', text: 'Форма Р-1', right: true },
         P('Заказчик: ' + v(d.cp_name) + ', ' + v(d.cp_addr) + contact(d.cp_contact) + '. ИИН/БИН: ' + v(d.cp_bin) + '.'),
-        P('Исполнитель: ' + ipIntro(d) + ', ' + v(d.ip_addr) + contact(d.ip_contact) + '. ИИН/БИН: ' + v(d.ip_iin) + '.'),
+        P('Исполнитель: ' + ipIntro(d) + ', место нахождения: ' + v(d.ip_addr) + contact(d.ip_contact) + '. ИИН/БИН: ' + v(d.ip_iin) + '.'),
         P('Договор (контракт) № ' + v(d.contract_no) + ' от ' + longDate(d.contract_date)),
         G(),
         R('Номер документа: ' + v(d.number), 'Дата составления: ' + fd(d.date)),
@@ -479,7 +479,7 @@
         H('13. Реквизиты и подписи сторон'),
         {
           k: 'cols',
-          left: ['Работодатель', v(d.ip_name), 'ФИО: ' + v(d.ip_fio), 'ИИН: ' + v(d.ip_iin), 'Адрес постоянного места жительства, регистрация: ' + v(d.ip_addr), 'Удостоверение личности № ' + v(d.ip_doc_no) + ', выдано ' + fd(d.ip_doc_date)],
+          left: ['Работодатель', v(d.ip_name), 'ФИО: ' + v(d.ip_fio), 'ИИН: ' + v(d.ip_iin), 'Место нахождения: ' + v(d.ip_addr), 'Удостоверение личности № ' + v(d.ip_doc_no) + ', выдано ' + fd(d.ip_doc_date)],
           right: ['Работник', v(d.w_fio), 'ИИН: ' + v(d.w_iin), 'Адрес постоянного места жительства, регистрация: ' + v(d.w_addr), 'Удостоверение личности № ' + v(d.w_doc_no) + ', выдано ' + fd(d.w_doc_date)],
           signLeft: ['______________ ' + initials(d.ip_fio), 'М.П. (при наличии)'],
           signRight: ['______________ ' + initials(d.w_fio), 'Экземпляр договора получен: ______________']
@@ -515,7 +515,7 @@
     certificate: function (d) {
       var out = [
         C(v(d.ip_name), true),
-        C('ФИО: ' + v(d.ip_fio) + ', ИИН ' + v(d.ip_iin) + ', ' + v(d.ip_addr)),
+        C('ФИО: ' + v(d.ip_fio) + ', ИИН ' + v(d.ip_iin) + ', место нахождения: ' + v(d.ip_addr)),
         G(),
         R(fd(d.date) + ' № ' + v(d.number), v(d.addressee)),
         C(place(d)),
