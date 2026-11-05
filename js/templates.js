@@ -15,6 +15,7 @@
     ip_fio: { type: 'text' },
     ip_iin: { type: 'text', rule: 'iin', mode: 'numeric', max: 12 },
     ip_addr: { type: 'text' },
+    ip_res: { type: 'text' },
     ip_contact: { type: 'text', optional: true },
     ip_doc_no: { type: 'text', rule: 'idNum', mode: 'numeric', max: 9 },
     ip_doc_date: { type: 'date' },
@@ -113,7 +114,7 @@
       cat: 'hr', icon: 'contract',
       steps: [
         { key: 's.general', fields: ['number', 'date', 'city'] },
-        { key: 's.parties', fields: IP_SHORT.concat(['ip_doc_no', 'ip_doc_date', 'w_fio', 'w_iin', 'w_addr', 'w_doc_no', 'w_doc_date', 'age16']) },
+        { key: 's.parties', fields: ['ip_name', 'ip_fio', 'ip_iin', 'ip_res', 'ip_doc_no', 'ip_doc_date', 'w_fio', 'w_iin', 'w_addr', 'w_doc_no', 'w_doc_date', 'age16'] },
         { key: 's.job', fields: ['position', 'place', 'term_kind', 'term_months', 'work_start', 'probation', 'manager'] },
         { key: 's.time', fields: ['hours', 'regime', 'salary', 'pay_day', 'leave_contract'] }
       ]
@@ -479,7 +480,7 @@
         H('13. Реквизиты и подписи сторон'),
         {
           k: 'cols',
-          left: ['Работодатель', v(d.ip_name), 'ФИО: ' + v(d.ip_fio), 'ИИН: ' + v(d.ip_iin), 'Место нахождения: ' + v(d.ip_addr), 'Удостоверение личности № ' + v(d.ip_doc_no) + ', выдано ' + fd(d.ip_doc_date)],
+          left: ['Работодатель', v(d.ip_name), 'ФИО: ' + v(d.ip_fio), 'ИИН: ' + v(d.ip_iin), 'Адрес постоянного места жительства, регистрация: ' + v(d.ip_res), 'Удостоверение личности № ' + v(d.ip_doc_no) + ', выдано ' + fd(d.ip_doc_date)],
           right: ['Работник', v(d.w_fio), 'ИИН: ' + v(d.w_iin), 'Адрес постоянного места жительства, регистрация: ' + v(d.w_addr), 'Удостоверение личности № ' + v(d.w_doc_no) + ', выдано ' + fd(d.w_doc_date)],
           signLeft: ['______________ ' + initials(d.ip_fio), 'М.П. (при наличии)'],
           signRight: ['______________ ' + initials(d.w_fio), 'Экземпляр договора получен: ______________']
