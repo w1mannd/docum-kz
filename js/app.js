@@ -32,6 +32,10 @@
     document.querySelectorAll('[data-i18n]').forEach(function (n) {
       n.textContent = window.t(n.getAttribute('data-i18n'));
     });
+    document.querySelectorAll('[data-i18n-src]').forEach(function (n) {
+      var src = window.t(n.getAttribute('data-i18n-src'));
+      if (n.getAttribute('src') !== src) n.setAttribute('src', src);
+    });
     document.querySelectorAll('[data-i18n-alt]').forEach(function (n) {
       n.alt = window.t(n.getAttribute('data-i18n-alt'));
     });

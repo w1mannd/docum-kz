@@ -61,7 +61,7 @@ button { font: inherit; color: inherit; }
 .hero h1 .line { display: block; }
 .hero .lead { margin-top: 20px; max-width: 30em; font-size: 20px; color: var(--muted); line-height: 1.4; }
 .cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
-.hero-img { display: block; width: 100%; height: auto; border-radius: 28px; }
+.hero-img { display: block; width: auto; max-width: 100%; height: auto; max-height: 620px; margin: 0 auto; }
 
 .section { padding: 76px 0; }
 .section-alt { background: var(--bg2); }
@@ -259,7 +259,7 @@ button.step-btn { cursor: pointer; }
   .hero h1 { font-size: 36px; }
   .hero .lead { font-size: 18px; }
   .cta .btn { flex: 1 1 100%; }
-  .hero-img { border-radius: 22px; }
+  .hero-img { width: 70%; max-height: none; }
   .section { padding: 48px 0; }
   .section h2 { font-size: 30px; }
   .cards, .how, .doc-list { grid-template-columns: 1fr; }
