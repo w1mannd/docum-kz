@@ -285,8 +285,9 @@ button.step-btn { cursor: pointer; }
 @media (max-width: 768px) {
   :root { --gutter: 18px; --head-h: 56px; --tab-h: 56px; --tab-side: 19px; --tab-gap: max(19px, env(safe-area-inset-bottom)); --glass-fill: rgba(255, 255, 255, .58); --glass-filter: blur(2.5px) saturate(170%); --glass-shadow: 0 10px 28px -6px rgba(0, 0, 0, .14), 0 1px 2px rgba(0, 0, 0, .05), inset 0 0 0 1px rgba(255, 255, 255, .7); }
   html { background: var(--bg2); }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --glass-fill: rgba(28, 28, 30, .6); --glass-shadow: 0 10px 28px -6px rgba(0, 0, 0, .6), 0 1px 2px rgba(0, 0, 0, .3), inset 0 0 0 1px rgba(255, 255, 255, .06); } }
-  :root[data-theme="dark"] { --glass-fill: rgba(28, 28, 30, .6); --glass-shadow: 0 10px 28px -6px rgba(0, 0, 0, .6), 0 1px 2px rgba(0, 0, 0, .3), inset 0 0 0 1px rgba(255, 255, 255, .06); }
+  :root { --glass-btn: rgba(255, 255, 255, .3); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --glass-btn: rgba(44, 44, 46, .3); --glass-fill: rgba(28, 28, 30, .6); --glass-shadow: 0 10px 28px -6px rgba(0, 0, 0, .6), 0 1px 2px rgba(0, 0, 0, .3), inset 0 0 0 1px rgba(255, 255, 255, .06); } }
+  :root[data-theme="dark"] { --glass-btn: rgba(44, 44, 46, .3); --glass-fill: rgba(28, 28, 30, .6); --glass-shadow: 0 10px 28px -6px rgba(0, 0, 0, .6), 0 1px 2px rgba(0, 0, 0, .3), inset 0 0 0 1px rgba(255, 255, 255, .06); }
   body { font-size: 16px; }
   /* Место под нижними панелями — часть футера, чтобы низ страницы был одного цвета. */
   .site-foot { padding-bottom: calc(var(--tab-h) + var(--tab-gap) + 14px); }
@@ -294,10 +295,9 @@ button.step-btn { cursor: pointer; }
   .head-in { gap: 10px; }
   .site-nav { display: none; }
   .tab-bar { position: fixed; z-index: 40; left: var(--tab-side); right: var(--tab-side); bottom: var(--tab-gap); max-width: 440px; margin: 0 auto; height: var(--tab-h); padding: 4px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; border-radius: 28px; }
-  .tab-bar, .action-bar { background: var(--glass-fill); -webkit-backdrop-filter: var(--glass-filter); backdrop-filter: var(--glass-filter); border: .5px solid var(--glass-line); box-shadow: var(--glass-shadow); }
+  .tab-bar { background: var(--glass-fill); -webkit-backdrop-filter: var(--glass-filter); backdrop-filter: var(--glass-filter); border: .5px solid var(--glass-line); box-shadow: var(--glass-shadow); }
   .tab-bar > *, .action-inner { position: relative; }
   .lg-refract .tab-bar { -webkit-backdrop-filter: url(#lg-tab) saturate(170%); backdrop-filter: url(#lg-tab) saturate(170%); }
-  .lg-refract .action-bar { -webkit-backdrop-filter: url(#lg-action) saturate(170%); backdrop-filter: url(#lg-action) saturate(170%); }
   .tab { display: grid; grid-template-rows: 24px 13px; row-gap: 1px; justify-items: center; align-content: center; min-width: 0; border-radius: 24px; color: var(--text); font-size: 11px; font-weight: 500; line-height: 13px; text-align: center; }
   .tab span { display: block; max-width: 100%; white-space: nowrap; }
   .tab:hover { text-decoration: none; }
@@ -353,6 +353,13 @@ button.step-btn { cursor: pointer; }
 
   .action-bar { position: fixed; z-index: 40; left: var(--tab-side); right: var(--tab-side); bottom: var(--tab-gap); max-width: 440px; margin: 0 auto; height: var(--tab-h); border-radius: 28px; padding: 5px; }
   .action-inner .btn { min-height: 44px; height: 44px; }
+  /* Кнопки шагов: без общей подложки, каждая кнопка — отдельная стеклянная капсула, как поле ввода в Telegram. */
+  .action-bar { background: transparent; border: 0; box-shadow: none; padding: 0; height: auto; }
+  .action-inner .btn, .action-inner .btn-primary, .action-inner .btn-ghost { height: 48px; min-height: 48px; background: var(--glass-btn); -webkit-backdrop-filter: blur(8px) saturate(180%); backdrop-filter: blur(8px) saturate(180%); border: .5px solid var(--glass-line); box-shadow: var(--glass-shadow); color: var(--text); }
+  .action-inner .btn-primary { color: var(--accent); font-weight: 600; }
+  .action-inner .btn:hover, .action-inner .btn-primary:hover { background: var(--glass-btn); border-color: var(--glass-line); }
+  .action-inner .btn:active { transform: scale(.96); }
+  .action-inner .btn { transition: transform .2s cubic-bezier(.3, 1.6, .5, 1); }
   /* Пока заполняется документ, нижнее меню скрыто: внизу экрана только кнопки шагов. */
   /* Нижнее меню: движение. Прячется в конструкторе и при прокрутке вниз. */
   .tab-bar { transition: transform .42s cubic-bezier(.32, .72, 0, 1), opacity .28s ease, visibility 0s linear 0s; }
@@ -375,18 +382,18 @@ button.step-btn { cursor: pointer; }
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .site-head, .tab-bar, .action-bar { background: var(--bg) !important; }
+  .site-head, .tab-bar, .action-inner .btn { background: var(--bg) !important; }
 }
 
 /* Системный материал Safari на iOS 26: если браузер его знает, он заменяет наше стекло. */
 @supports (-apple-visual-effect: -apple-system-glass-material) {
   @media (max-width: 768px) {
-    .tab-bar, .action-bar { -apple-visual-effect: -apple-system-glass-material; background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; }
+    .tab-bar, .action-inner .btn { -apple-visual-effect: -apple-system-glass-material; background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; }
   }
 }
 
 @media (prefers-reduced-transparency: reduce) {
-  .site-head, .tab-bar, .action-bar { background: var(--bg) !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+  .site-head, .tab-bar, .action-inner .btn { background: var(--bg) !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
 }
 
 @media (prefers-reduced-motion: reduce) {

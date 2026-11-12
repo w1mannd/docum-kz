@@ -12,7 +12,7 @@
   var calm = window.matchMedia('(prefers-reduced-transparency: reduce)');
   var NS = 'http://www.w3.org/2000/svg';
   var BEZEL = 14, SCALE = 34;
-  var targets = [['.tab-bar', 'lg-tab'], ['.action-bar', 'lg-action']];
+  var targets = [['.tab-bar', 'lg-tab']];
 
   var svg = document.createElementNS(NS, 'svg');
   svg.setAttribute('width', '0');
