@@ -98,6 +98,14 @@
     return bar;
   }
 
+  /* ---------- Избранное: коды документов в браузере ---------- */
+  var FAV_KEY = 'docum-favs';
+  function favList() {
+    try { var a = JSON.parse(localStorage.getItem(FAV_KEY) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; }
+  }
+  function favSave(a) { try { localStorage.setItem(FAV_KEY, JSON.stringify(a)); } catch (e) { /* не критично */ } }
+  var STAR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.2l2.7 5.5 6 .9-4.35 4.25 1.03 6-5.38-2.83-5.38 2.83 1.03-6L3.3 9.6l6-.9z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+
   /* ---------- Выбор документа ---------- */
   function renderPicker() {
     root.textContent = '';
@@ -126,16 +134,40 @@
 
     var chips = el('div', 'chips'), cat = 'all', rows = [];
     var empty = el('p', 'empty', t('c.empty'));
+    var favs = favList();
     var apply = function () {
       var q = input.value.trim().toLowerCase(), shown = 0;
       rows.forEach(function (r) {
-        var ok = (cat === 'all' || r.cat === cat) && r.node.textContent.toLowerCase().indexOf(q) >= 0;
+        var inCat = cat === 'all' || (cat === 'fav' ? favs.indexOf(r.code) >= 0 : r.cat === cat);
+        var ok = inCat && r.text.toLowerCase().indexOf(q) >= 0;
         r.node.hidden = !ok;
         if (ok) shown++;
       });
+      empty.textContent = cat === 'fav' && !favs.length ? t('c.favEmpty') : t('c.empty');
       empty.hidden = shown > 0;
     };
-    ['all', 'contracts', 'accounting', 'hr'].forEach(function (c) {
+    // Избранные документы стоят первыми; перестановка анимируется (FLIP).
+    var order = function (animate) {
+      var before = {};
+      if (animate) rows.forEach(function (r) { if (!r.node.hidden) before[r.code] = r.node.getBoundingClientRect(); });
+      rows.slice().sort(function (a, b) {
+        var fa = favs.indexOf(a.code) >= 0 ? 0 : 1, fb = favs.indexOf(b.code) >= 0 ? 0 : 1;
+        return fa - fb || a.i - b.i;
+      }).forEach(function (r) { grid.appendChild(r.node); });
+      if (!animate || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      rows.forEach(function (r) {
+        var old = before[r.code];
+        if (!old || r.node.hidden) return;
+        var now = r.node.getBoundingClientRect(), dx = old.left - now.left, dy = old.top - now.top;
+        if (!dx && !dy) return;
+        r.node.style.transition = 'none';
+        r.node.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+        void r.node.offsetWidth;
+        r.node.style.transition = 'transform .45s cubic-bezier(.32, .72, 0, 1)';
+        r.node.style.transform = '';
+      });
+    };
+    ['all', 'fav', 'contracts', 'accounting', 'hr'].forEach(function (c) {
       var b = el('button', 'chip', t('cat.' + c));
       b.type = 'button'; b.setAttribute('aria-pressed', String(c === 'all'));
       b.addEventListener('click', function () {
@@ -149,16 +181,37 @@
     input.addEventListener('input', apply);
 
     var grid = el('div', 'doc-list');
-    Object.keys(TPL.DOCS).forEach(function (code) {
+    Object.keys(TPL.DOCS).forEach(function (code, i) {
+      var item = el('div', 'doc-item');
       var a = el('a', 'doc-row');
       a.href = 'constructor.html?doc=' + code;
       a.appendChild(el('span', 'doc-row-title', t('d.' + code)));
       a.appendChild(el('span', 'doc-row-text', t('dd.' + code)));
       a.appendChild(el('span', 'doc-row-meta', t('db.' + code)));
-      grid.appendChild(a);
-      rows.push({ node: a, cat: TPL.DOCS[code].cat });
+      var star = el('button', 'fav-btn');
+      star.type = 'button';
+      star.innerHTML = STAR;
+      var mark = function () {
+        var on = favs.indexOf(code) >= 0;
+        star.setAttribute('aria-pressed', String(on));
+        star.setAttribute('aria-label', t(on ? 'a.favDel' : 'a.favAdd') + ': ' + t('d.' + code));
+      };
+      mark();
+      star.addEventListener('click', function () {
+        var k = favs.indexOf(code);
+        if (k >= 0) favs.splice(k, 1); else favs.push(code);
+        favSave(favs);
+        mark();
+        star.classList.remove('is-pop'); void star.offsetWidth; star.classList.add('is-pop');
+        apply();
+        order(true);
+      });
+      item.appendChild(a);
+      item.appendChild(star);
+      rows.push({ node: item, cat: TPL.DOCS[code].cat, code: code, i: i, text: a.textContent });
     });
     root.appendChild(grid);
+    order(false);
     empty.hidden = true;
     root.appendChild(empty);
   }
