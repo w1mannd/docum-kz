@@ -41,6 +41,8 @@
     return d;
   }
   function toISO(d) {
+    // Дата за пределами допустимого диапазона не должна ломать сводку: возвращаем пустую строку.
+    if (!d || isNaN(d.getTime()) || Math.abs(d.getUTCFullYear()) > 9999) return '';
     return d.toISOString().slice(0, 10);
   }
   function fmtDate(iso) {
@@ -59,6 +61,7 @@
     var n = parseInt10(days), h = isEmpty(holidays) ? 0 : parseInt10(holidays);
     if (!parseISO(startISO) || isNaN(n) || n < 1 || isNaN(h) || n + h > MAX_DAYS * 2) return null;
     var end = addDays(startISO, n + h - 1);
+    if (!end) return null;
     return { end: end, back: addDays(end, 1) };
   }
 

@@ -217,6 +217,7 @@
   }
 
   /* ---------- Каркас шага ---------- */
+  var lastStep = -1, lastCode = '';
   function render(focusId) {
     document.body.classList.toggle('is-building', !!state.code);
     if (!state.code) { renderPicker(); return; }
@@ -253,6 +254,7 @@
     var main = el('div', 'panel');
     main.appendChild(el('p', 'step-count', t('b.stepOf').replace('{n}', state.step + 1).replace('{m}', stepCount())));
     main.appendChild(el('h2', 'panel-title', stepTitle(state.step)));
+    main.appendChild(renderProgress());
 
     if (isReview()) renderReview(main);
     else renderFields(main);
@@ -262,11 +264,65 @@
     root.appendChild(wrap);
     root.appendChild(renderActions());
     fillSummary();
+    updateProgress();
+    // Новый шаг плавно появляется; перерисовка того же шага (выбор в списке) не анимируется.
+    if (state.step !== lastStep || state.code !== lastCode) wrap.classList.add('is-enter');
+    lastStep = state.step; lastCode = state.code;
 
     if (focusId) {
       var f = document.getElementById(focusId);
       if (f) f.focus();
     }
+  }
+
+  /* ---------- Полоса заполнения: обязательные поля всех шагов ---------- */
+  function progress() {
+    var tot = 0, ok = 0;
+    doc().steps.forEach(function (s) {
+      s.fields.forEach(function (id) {
+        var f = TPL.FIELDS[id];
+        if (!visible(id) || f.optional) return;
+        tot++;
+        var v = state.data[id], filled;
+        if (f.type === 'items') filled = Array.isArray(v) && v.length > 0 && v.every(function (it) { return !L.isEmpty(it.name); });
+        else if (f.type === 'check') filled = !!v;
+        else {
+          filled = !L.isEmpty(v);
+          if (filled && f.type !== 'select') { var r = checkOne(f, id); if (r && r.type === 'error') filled = false; }
+        }
+        if (filled) ok++;
+      });
+    });
+    return { ok: ok, tot: tot };
+  }
+  var lastPct = 0;
+  function renderProgress() {
+    var box = el('div', 'fill');
+    box.setAttribute('role', 'progressbar');
+    box.setAttribute('aria-valuemin', '0');
+    box.setAttribute('aria-label', t('b.fillLabel'));
+    var top = el('div', 'fill-top');
+    top.appendChild(el('span', null, t('b.fill')));
+    top.appendChild(el('span', 'fill-num'));
+    var track = el('div', 'fill-track');
+    var bar = el('i');
+    bar.style.width = lastPct + '%';
+    track.appendChild(bar);
+    box.appendChild(top); box.appendChild(track);
+    return box;
+  }
+  function updateProgress() {
+    var box = root.querySelector('.fill');
+    if (!box) return;
+    var p = progress(), pct = p.tot ? Math.round(p.ok / p.tot * 100) : 100;
+    box.setAttribute('aria-valuemax', String(p.tot));
+    box.setAttribute('aria-valuenow', String(p.ok));
+    box.setAttribute('aria-valuetext', t('b.fillOf').replace('{n}', p.ok).replace('{m}', p.tot));
+    box.querySelector('.fill-num').textContent = t('b.fillOf').replace('{n}', p.ok).replace('{m}', p.tot);
+    box.classList.toggle('is-full', p.ok === p.tot);
+    var bar = box.querySelector('i');
+    window.requestAnimationFrame(function () { bar.style.width = pct + '%'; });
+    lastPct = pct;
   }
 
   function renderActions() {
@@ -402,6 +458,7 @@
         setInvalid(input, state.msgs[id]);
       }
       fillSummary();
+      updateProgress();
     };
     input.addEventListener(f.type === 'select' || f.type === 'check' ? 'change' : 'input', handler);
     if (f.type !== 'select' && f.type !== 'check') {
@@ -466,6 +523,7 @@
         paintMessage(m, res);
         inp.setAttribute('aria-describedby', m.id);
         inp.addEventListener('input', function () {
+          window.setTimeout(updateProgress, 0);
           it[c] = inp.value;
           if (state.itemMsgs[i]) {
             state.itemMsgs[i] = L.checkItem(it, f.withDate);
@@ -597,6 +655,12 @@
     sheet.id = 'preview';
     sheet.lang = state.docLang;
     sheet.innerHTML = EX.toHTML(TPL.build(state.code, state.data, state.docLang));
+    var copy = el('button', 'btn btn-ghost btn-copy');
+    copy.type = 'button';
+    copy.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>';
+    copy.appendChild(el('span', null, t('b.copy')));
+    copy.addEventListener('click', function () { copyText(sheet, copy); });
+    main.appendChild(copy);
     main.appendChild(sheet);
     var st = el('p', 'msg');
     st.id = 'dl-status';
@@ -606,6 +670,31 @@
     again.type = 'button';
     again.addEventListener('click', function () { start(state.code); scrollTop(); });
     main.appendChild(again);
+  }
+
+  // Текст документа без оформления: для вставки в письмо или мессенджер.
+  function copyText(sheet, btn) {
+    var text = sheet.innerText.replace(/\n{3,}/g, '\n\n').trim();
+    var done = function (ok) {
+      var label = btn.querySelector('span');
+      label.textContent = t(ok ? 'b.copied' : 'e.copy');
+      btn.classList.toggle('is-done', ok);
+      var status = document.getElementById('dl-status');
+      if (status) { status.textContent = t(ok ? 'b.copied' : 'e.copy'); status.className = ok ? 'msg' : 'msg msg-error'; }
+      window.clearTimeout(btn._t);
+      btn._t = window.setTimeout(function () { label.textContent = t('b.copy'); btn.classList.remove('is-done'); }, 2200);
+    };
+    var fallback = function () {
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+      ta.remove();
+      done(ok);
+    };
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(function () { done(true); }, fallback);
+    else fallback();
   }
 
   function download(kind, btn) {

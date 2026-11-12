@@ -17,6 +17,7 @@
   --head-bg: rgba(255, 255, 255, .92); --head-line: rgba(0, 0, 0, .08);
   --head-bg-m: rgba(255, 255, 255, .5); --head-line-m: rgba(255, 255, 255, .5);
   --glass-line: rgba(60, 60, 67, .22);
+  --ease: cubic-bezier(.22, 1, .36, 1);
   color-scheme: light dark;
 }
 /* Тёмная тема включается по настройке системы. Документ на листе остаётся белым, как бумага. */
@@ -411,4 +412,52 @@ button.step-btn { cursor: pointer; }
 
 @media print {
   .site-head, .site-foot, .steps, .action-bar, .tab-bar { display: none; }
+}
+
+/* ---------- Заполнение документа ---------- */
+.fill { margin: 4px 0 22px; }
+.fill-top { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--muted); }
+.fill-num { color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums; }
+.fill-track { height: 6px; margin-top: 7px; border-radius: 3px; background: var(--bg2); overflow: hidden; }
+.fill-track i { display: block; height: 100%; width: 0; border-radius: 3px; background: var(--btn); transition: width .6s var(--ease), background-color .4s ease; }
+.fill.is-full .fill-track i { background: #34C759; }
+
+/* ---------- Копирование текста ---------- */
+.btn-copy { gap: 8px; min-height: 40px; padding: 0 16px; font-size: 15px; margin: 4px 0 14px; transition: border-color .2s ease, color .2s ease, transform .15s var(--ease); }
+.btn-copy svg { width: 18px; height: 18px; }
+.btn-copy.is-done { color: #248A3D; border-color: #34C759; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .btn-copy.is-done { color: #30D158; } }
+:root[data-theme="dark"] .btn-copy.is-done { color: #30D158; }
+
+/* ---------- Движение: плавное появление, как на ai-rights-watch ---------- */
+@keyframes page-in { from { opacity: 0; } }
+@keyframes rise { from { opacity: 0; transform: translateY(16px); } }
+@keyframes rise-far { from { opacity: 0; transform: translateY(40px); } }
+main { animation: page-in .5s var(--ease) backwards; }
+.hero .eyebrow, .hero h1 .line, .hero .lead, .hero .cta { animation: rise .9s var(--ease) backwards; }
+.hero h1 .line:nth-child(1) { animation-delay: .08s; }
+.hero h1 .line:nth-child(2) { animation-delay: .16s; }
+.hero .lead { animation-delay: .24s; }
+.hero .cta { animation-delay: .32s; }
+.hero-img { animation: rise-far 1.4s var(--ease) .1s backwards; }
+.btn { transition: background-color .2s var(--ease), color .2s, border-color .2s, transform .15s var(--ease); }
+.btn:active:not(:disabled) { transform: scale(.98); }
+a.card, .doc-row { transition: background-color .25s var(--ease), transform .3s var(--ease); }
+a.card:hover, .doc-row:hover { transform: translateY(-2px); }
+/* Появление при прокрутке: класс .js-reveal ставит app.js, без JS всё видно сразу. */
+.js-reveal [data-reveal] { opacity: 0; transform: translateY(24px); transition: opacity .8s var(--ease), transform .8s var(--ease); transition-delay: var(--d, 0s); }
+.js-reveal [data-reveal].in { opacity: 1; transform: none; }
+/* Конструктор: новый шаг и список документов появляются по очереди. */
+.builder.is-enter .panel > * { animation: rise .5s var(--ease) backwards; }
+.builder.is-enter .panel > :nth-child(2) { animation-delay: .04s; }
+.builder.is-enter .panel > :nth-child(3) { animation-delay: .08s; }
+.builder.is-enter .panel > :nth-child(4) { animation-delay: .12s; }
+.builder.is-enter .panel > :nth-child(n+5) { animation-delay: .16s; }
+.doc-item { animation: rise .6s var(--ease) backwards; }
+.doc-item:nth-child(2) { animation-delay: .05s; }
+.doc-item:nth-child(3) { animation-delay: .1s; }
+.doc-item:nth-child(4) { animation-delay: .15s; }
+.doc-item:nth-child(n+5) { animation-delay: .2s; }
+@media (prefers-reduced-motion: reduce) {
+  .js-reveal [data-reveal] { opacity: 1; transform: none; }
 }

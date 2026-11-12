@@ -117,4 +117,27 @@
 
   applyTheme();
   applyLang();
+
+  // Блоки страницы плавно выезжают снизу, когда доходят до экрана.
+  var calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!calm && 'IntersectionObserver' in window) {
+    var sel = '.section-head, .card, .how li, .perks > *, .page-head, .tbl tbody tr, .prose > *, .faq > *, .foot-grid > *, .foot-list > p';
+    var fired = false;
+    var seen = new IntersectionObserver(function (list) {
+      fired = true;
+      list.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); seen.unobserve(e.target); } });
+    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.12 });
+    document.documentElement.classList.add('js-reveal');
+    document.querySelectorAll(sel).forEach(function (n) {
+      if (n.closest('.hero')) return;
+      var sibs = Array.prototype.filter.call(n.parentNode.children, function (x) { return x.matches(sel); });
+      n.setAttribute('data-reveal', '');
+      n.style.setProperty('--d', Math.min(sibs.indexOf(n), 4) * 0.07 + 's');
+      seen.observe(n);
+    });
+    // Если браузер так и не сообщил о видимости, показываем всё, чтобы текст не остался скрытым.
+    window.setTimeout(function () {
+      if (!fired) document.querySelectorAll('[data-reveal]').forEach(function (n) { n.classList.add('in'); });
+    }, 1500);
+  }
 })();
