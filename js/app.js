@@ -22,6 +22,10 @@
     return !!((I18N[lang] && I18N[lang][key] !== undefined) || (I18N.ru && I18N.ru[key] !== undefined));
   };
 
+  // Тёмная тема: картинка на главной меняется вместе с настройкой системы.
+  var dark = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  if (dark && dark.addEventListener) dark.addEventListener('change', function () { applyLang(); });
+
   function applyLang() {
     document.documentElement.lang = lang === 'kk' ? 'kk' : 'ru';
     var titleKey = document.documentElement.getAttribute('data-title');
@@ -34,6 +38,7 @@
     });
     document.querySelectorAll('[data-i18n-src]').forEach(function (n) {
       var src = window.t(n.getAttribute('data-i18n-src'));
+      if (n.hasAttribute('data-dark') && dark && dark.matches) src = src.replace(/\.webp$/, '-dark.webp');
       if (n.getAttribute('src') !== src) n.setAttribute('src', src);
     });
     document.querySelectorAll('[data-i18n-alt]').forEach(function (n) {
