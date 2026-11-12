@@ -20,8 +20,9 @@
   color-scheme: light dark;
 }
 /* Тёмная тема включается по настройке системы. Документ на листе остаётся белым, как бумага. */
+/* Тёмная тема: по настройке системы или по кнопке в шапке (data-theme на <html>). */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --text: #F5F5F7; --muted: #A1A1A6; --bg: #000000; --bg2: #161617; --line: #424245;
     --accent: #2997FF; --accent-d: #0077ED; --error: #FF453A; --warn: #FF9F0A;
     --on-text: #000000; --hover: #2C2C2E; --tbl-line: #333336;
@@ -31,6 +32,17 @@
     --glass-line: rgba(255, 255, 255, .16);
   }
 }
+:root[data-theme="dark"] {
+  --text: #F5F5F7; --muted: #A1A1A6; --bg: #000000; --bg2: #161617; --line: #424245;
+  --accent: #2997FF; --accent-d: #0077ED; --error: #FF453A; --warn: #FF9F0A;
+  --on-text: #000000; --hover: #2C2C2E; --tbl-line: #333336;
+  --warn-bg: #3A2810; --warn-fg: #FFB35C; --info-bg: #0E2A47; --tab-active: #0A84FF;
+  --head-bg: rgba(0, 0, 0, .8); --head-line: rgba(255, 255, 255, .12);
+  --head-bg-m: rgba(0, 0, 0, .5); --head-line-m: rgba(255, 255, 255, .1);
+  --glass-line: rgba(255, 255, 255, .16);
+}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 body { margin: 0; background: var(--bg); color: var(--text); font: 400 17px/1.5 var(--font); -webkit-font-smoothing: antialiased; display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; overflow-wrap: anywhere; }
@@ -58,6 +70,9 @@ button { font: inherit; color: inherit; }
 .lang { display: flex; gap: 2px; background: var(--bg2); padding: 3px; border-radius: 999px; }
 .lang-btn { border: 0; background: none; padding: 4px 10px; border-radius: 999px; font-size: 13px; cursor: pointer; min-height: 30px; }
 .lang-btn[aria-pressed="true"] { background: var(--bg); font-weight: 600; }
+.theme-btn { flex: none; width: 36px; height: 36px; margin-left: 6px; border: 0; border-radius: 50%; background: var(--bg2); color: var(--text); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.theme-btn svg { width: 18px; height: 18px; display: none; }
+.theme-btn[data-mode="auto"] .ic-auto, .theme-btn[data-mode="light"] .ic-light, .theme-btn[data-mode="dark"] .ic-dark { display: block; }
 .tab-bar { display: none; }
 
 /* Buttons */
@@ -270,7 +285,8 @@ button.step-btn { cursor: pointer; }
 @media (max-width: 768px) {
   :root { --gutter: 18px; --head-h: 56px; --tab-h: 56px; --tab-side: 19px; --tab-gap: max(19px, env(safe-area-inset-bottom)); --glass-fill: rgba(255, 255, 255, .58); --glass-filter: blur(2.5px) saturate(170%); --glass-shadow: 0 10px 28px -6px rgba(0, 0, 0, .14), 0 1px 2px rgba(0, 0, 0, .05), inset 0 0 0 1px rgba(255, 255, 255, .7); }
   html { background: var(--bg2); }
-  @media (prefers-color-scheme: dark) { :root { --glass-fill: rgba(28, 28, 30, .6); --glass-shadow: 0 10px 28px -6px rgba(0, 0, 0, .6), 0 1px 2px rgba(0, 0, 0, .3), inset 0 0 0 1px rgba(255, 255, 255, .06); } }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --glass-fill: rgba(28, 28, 30, .6); --glass-shadow: 0 10px 28px -6px rgba(0, 0, 0, .6), 0 1px 2px rgba(0, 0, 0, .3), inset 0 0 0 1px rgba(255, 255, 255, .06); } }
+  :root[data-theme="dark"] { --glass-fill: rgba(28, 28, 30, .6); --glass-shadow: 0 10px 28px -6px rgba(0, 0, 0, .6), 0 1px 2px rgba(0, 0, 0, .3), inset 0 0 0 1px rgba(255, 255, 255, .06); }
   body { font-size: 16px; }
   /* Место под нижними панелями — часть футера, чтобы низ страницы был одного цвета. */
   .site-foot { padding-bottom: calc(var(--tab-h) + var(--tab-gap) + 14px); }

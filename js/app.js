@@ -25,6 +25,21 @@
   // Тёмная тема: картинка на главной меняется вместе с настройкой системы.
   var dark = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
   if (dark && dark.addEventListener) dark.addEventListener('change', function () { applyLang(); });
+  var theme = document.documentElement.getAttribute('data-theme') || 'auto';
+  function isDark() { return theme === 'dark' || (theme !== 'light' && !!(dark && dark.matches)); }
+  var THEME_NEXT = { auto: 'light', light: 'dark', dark: 'auto' };
+  var THEME_KEY = { auto: 'a.themeAuto', light: 'a.themeLight', dark: 'a.themeDark' };
+  var metaLight = document.querySelector('meta[name="theme-color"][media*="light"]');
+  var metaDark = document.querySelector('meta[name="theme-color"][media*="dark"]');
+  function applyTheme() {
+    if (theme === 'auto') document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', theme);
+    var color = theme === 'dark' ? '#000000' : theme === 'light' ? '#ffffff' : null;
+    if (metaLight) metaLight.content = color || '#ffffff';
+    if (metaDark) metaDark.content = color || '#000000';
+    var b = document.querySelector('.theme-btn');
+    if (b) { b.setAttribute('data-mode', theme); b.setAttribute('data-i18n-label', THEME_KEY[theme]); }
+  }
 
   function applyLang() {
     document.documentElement.lang = lang === 'kk' ? 'kk' : 'ru';
@@ -38,7 +53,7 @@
     });
     document.querySelectorAll('[data-i18n-src]').forEach(function (n) {
       var src = window.t(n.getAttribute('data-i18n-src'));
-      if (n.hasAttribute('data-dark') && dark && dark.matches) src = src.replace(/\.webp$/, '-dark.webp');
+      if (n.hasAttribute('data-dark') && isDark()) src = src.replace(/\.webp$/, '-dark.webp');
       if (n.getAttribute('src') !== src) n.setAttribute('src', src);
     });
     document.querySelectorAll('[data-i18n-alt]').forEach(function (n) {
@@ -75,6 +90,17 @@
     });
   }
 
+  // Кнопка темы: как в системе → светлая → тёмная.
+  var tb = document.querySelector('.theme-btn');
+  if (tb) {
+    tb.addEventListener('click', function () {
+      theme = THEME_NEXT[theme] || 'auto';
+      try { if (theme === 'auto') localStorage.removeItem('docum-theme'); else localStorage.setItem('docum-theme', theme); } catch (err) { /* не критично */ }
+      applyTheme();
+      applyLang();
+    });
+  }
+
   /* Оговорка в footer */
   var info = document.querySelector('.note-btn'), pop = document.getElementById('note-pop');
   if (info && pop) {
@@ -89,5 +115,6 @@
     });
   }
 
+  applyTheme();
   applyLang();
 })();
