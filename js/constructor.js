@@ -32,7 +32,7 @@
 
   function start(code) {
     state.code = code; state.step = 0; state.data = {}; state.msgs = {}; state.itemMsgs = {};
-    state.draftId = null; state.draftNote = ''; state.prefilled = {};
+    state.draftId = null; state.draftNote = ''; state.prefilled = {}; state.journalId = null;
     state.docLang = window.getLang(); state.docLangSet = false;
     var profile = DR.getProfile();
     doc().steps.forEach(function (s) {
@@ -49,7 +49,7 @@
 
   function openDraft(d) {
     state.code = d.code; state.step = d.step; state.data = d.data; state.msgs = {}; state.itemMsgs = {};
-    state.draftId = d.id; state.draftNote = t('b.draftOpened'); state.prefilled = {};
+    state.draftId = d.id; state.draftNote = t('b.draftOpened'); state.prefilled = {}; state.journalId = null;
     state.docLang = d.lang || window.getLang(); state.docLangSet = !!d.lang;
     // Предупреждения пройденных шагов нужны на шаге проверки и после открытия черновика.
     doc().steps.forEach(function (s, i) {
@@ -666,6 +666,10 @@
     st.id = 'dl-status';
     st.setAttribute('role', 'status');
     main.appendChild(st);
+    var keep = el('button', 'link-btn', t('b.toJournal'));
+    keep.type = 'button';
+    keep.addEventListener('click', saveToJournal);
+    main.appendChild(keep);
     var again = el('button', 'link-btn', t('b.restart'));
     again.type = 'button';
     again.addEventListener('click', function () { start(state.code); scrollTop(); });
@@ -697,6 +701,39 @@
     else fallback();
   }
 
+  /* ---------- Журнал «Мои документы» ---------- */
+  // Готовый документ попадает в журнал: новый — новой записью, изменённый — новой версией той же записи.
+  function saveToJournal() {
+    var ST = window.DocumStore;
+    if (!ST) return Promise.resolve(null);
+    var blocks = TPL.build(state.code, state.data, state.docLang);
+    var data = JSON.parse(JSON.stringify(state.data));
+    return ST.hash(ST.text(blocks)).then(function (h) {
+      var load = state.journalId ? ST.get(state.journalId) : Promise.resolve(null);
+      return load.then(function (rec) {
+        if (rec) {
+          var last = rec.versions[rec.versions.length - 1];
+          if (last && last.hash === h) return rec;
+          rec.versions.push({ n: rec.versions.length + 1, at: Date.now(), blocks: blocks, data: data, lang: state.docLang, hash: h, note: '' });
+          rec.number = data.number || rec.number;
+          return ST.put(rec);
+        }
+        rec = { id: ST.newId(), code: state.code, lang: state.docLang, number: data.number || '', created: Date.now(), status: 'final',
+          versions: [{ n: 1, at: Date.now(), blocks: blocks, data: data, lang: state.docLang, hash: h, note: '' }], shares: [], signs: [] };
+        return ST.put(rec);
+      });
+    }).then(function (rec) {
+      if (rec) state.journalId = rec.id;
+      var st = document.getElementById('dl-status');
+      if (rec && st) {
+        st.className = 'msg'; st.textContent = '';
+        var a = el('a', null, t('b.inJournal')); a.href = 'documents.html?id=' + rec.id;
+        st.appendChild(a);
+      }
+      return rec;
+    }).catch(function (e) { if (window.console) console.error(e); return null; });
+  }
+
   function download(kind, btn) {
     var name = 'docum-' + state.code + '-' + (state.data.date || new Date().toISOString().slice(0, 10));
     var blocks = TPL.build(state.code, state.data, state.docLang);
@@ -710,13 +747,25 @@
       status.className = 'msg msg-error';
     }).then(function () {
       btn.disabled = false; btn.textContent = label;
+      if (status.className.indexOf('msg-error') < 0) saveToJournal();
     });
   }
 
   /* ---------- Запуск ---------- */
   var query = new URLSearchParams(location.search);
   var code = query.get('doc'), draft = query.get('draft') ? DR.get(query.get('draft')) : null;
-  if (draft) openDraft(draft);
+  var jid = query.get('journal');
+  if (jid && window.DocumStore) {
+    // «Изменить данные в конструкторе»: последняя версия из журнала открывается на шаге проверки.
+    window.DocumStore.get(jid).then(function (rec) {
+      if (!rec || !TPL.DOCS[rec.code]) { render(); return; }
+      var last = rec.versions[rec.versions.length - 1];
+      openDraft({ code: rec.code, step: TPL.DOCS[rec.code].steps.length, data: JSON.parse(JSON.stringify(last.data || {})), lang: last.lang || rec.lang });
+      state.draftId = null; state.draftNote = ''; state.journalId = rec.id;
+      render();
+    }).catch(function () { render(); });
+  }
+  else if (draft) openDraft(draft);
   else if (code && TPL.DOCS[code]) start(code);
   else render();
 

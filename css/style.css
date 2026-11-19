@@ -610,3 +610,94 @@ a.card:hover .more::after { transform: translateX(4px); }
   .civis-band .lead { font-size: 17px; }
   .how li:not(:last-child)::after { display: none; }
 }
+
+/* ---------- Мои документы: журнал ---------- */
+.msg-ok { color: #248A3D; }
+.jr-bar { display: grid; gap: 12px; margin-bottom: 18px; }
+.jr-list { display: grid; gap: 10px; }
+.jr-item { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px; padding: 16px 18px; border-radius: var(--r-card); background: var(--bg2); animation: rise .45s var(--ease) backwards; animation-delay: calc(var(--i, 0) * 40ms); transition: background-color .2s ease; }
+.jr-item:hover { background: var(--hover); }
+.jr-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; color: var(--text); }
+.jr-main:hover { text-decoration: none; }
+.jr-title { font-weight: 600; font-size: 17px; line-height: 1.3; }
+.jr-meta { color: var(--muted); font-size: 13px; }
+.jr-badge { display: inline-block; padding: 3px 10px; border-radius: 999px; background: var(--bg); color: var(--muted); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.jr-draft { color: var(--muted); }
+.jr-final { background: rgba(0, 113, 227, .12); color: var(--accent); }
+.jr-sent { background: rgba(255, 149, 0, .15); color: #C25E00; }
+.jr-signed { background: rgba(52, 199, 89, .15); color: #248A3D; }
+.jr-del { border: 0; background: none; color: var(--muted); font: inherit; font-size: 14px; cursor: pointer; padding: 8px; border-radius: 8px; }
+.jr-del:hover { color: var(--error); }
+.jr-empty { display: grid; justify-items: start; gap: 14px; color: var(--muted); }
+.jr-tools { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
+.jr-note { color: var(--muted); font-size: 13px; margin-top: 8px; }
+.jr-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 6px 0 18px; }
+.jr-tabs { display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: var(--bg2); width: max-content; max-width: 100%; overflow-x: auto; margin-bottom: 22px; scrollbar-width: none; }
+.jr-tab { flex: none; border: 0; background: none; color: var(--text); font: inherit; font-size: 15px; padding: 8px 16px; border-radius: 999px; cursor: pointer; transition: background-color .2s ease, color .2s ease; }
+.jr-tab[aria-selected="true"] { background: var(--bg); font-weight: 600; box-shadow: 0 1px 4px rgba(0, 0, 0, .08); }
+.jr-panel { animation: rise .4s var(--ease) backwards; }
+
+/* ---------- Редактор ---------- */
+.ed-hint { color: var(--muted); font-size: 14px; margin-bottom: 10px; }
+.ed-bar { position: sticky; top: calc(var(--head-h) + 8px); z-index: 5; display: flex; flex-wrap: wrap; gap: 6px; padding: 6px; margin-bottom: 12px; border-radius: 14px; background: var(--head-bg); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); border: 1px solid var(--line); width: max-content; max-width: 100%; }
+.ed-btn { border: 0; background: var(--bg2); color: var(--text); font: inherit; font-size: 14px; padding: 7px 12px; border-radius: 10px; cursor: pointer; }
+.ed-btn:hover { background: var(--hover); }
+.sheet-edit [contenteditable] { border-radius: 4px; outline: none; transition: background-color .15s ease, box-shadow .15s ease; }
+.sheet-edit [contenteditable]:hover { background: rgba(0, 113, 227, .05); }
+.sheet-edit [contenteditable]:focus { background: rgba(0, 113, 227, .08); box-shadow: 0 0 0 2px rgba(0, 113, 227, .35); }
+.sheet-edit .d-p:empty::before { content: '…'; color: #999; }
+.d-locked { opacity: .9; }
+.ed-foot { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 14px; }
+.ed-note { flex: 1 1 260px; }
+
+/* ---------- Версии ---------- */
+.ver-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.ver-item { padding: 14px 18px; border-radius: var(--r-card); background: var(--bg2); border-left: 3px solid transparent; }
+.ver-item:first-child { border-left-color: var(--accent); }
+.ver-top { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ver-hash { color: var(--muted); font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; margin-top: 4px; }
+.ver-acts { display: flex; flex-wrap: wrap; gap: 0 18px; }
+
+/* ---------- Сравнение как в Word ---------- */
+.cmp-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+.cmp-sel .input { margin-top: 4px; }
+.cmp-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 4px; }
+.cmp-stats { font-weight: 600; margin-right: auto; }
+.cmp-sheet .cmp-p { margin: 0 0 6px; padding: 2px 0 2px 12px; border-left: 3px solid transparent; white-space: pre-wrap; scroll-margin: 140px; transition: background-color .3s ease; }
+.cmp-sheet .cmp-chg, .cmp-sheet .cmp-ins, .cmp-sheet .cmp-del { border-left-color: #C25E00; }
+.cmp-sheet .is-cur { background: rgba(255, 204, 0, .18); }
+.cmp-sheet ins { color: #1A7F37; text-decoration: underline; text-decoration-thickness: 1.5px; background: rgba(52, 199, 89, .12); }
+.cmp-sheet del { color: #C9252D; text-decoration: line-through; background: rgba(255, 59, 48, .08); }
+
+/* ---------- Ссылка, согласование, подпись ---------- */
+.sh-box { padding: 22px; border-radius: var(--r-card); background: var(--bg2); margin-bottom: 18px; display: grid; gap: 12px; }
+.sh-box .panel-title { font-size: 22px; }
+.sh-modes { display: grid; gap: 4px; }
+.sh-link { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; word-break: break-all; }
+.sh-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.sh-out:empty { display: none; }
+.sg-list { display: grid; gap: 10px; }
+.sg-item { display: flex; gap: 14px; align-items: center; padding: 12px; border-radius: 14px; background: var(--bg); }
+.sg-item img { width: 180px; height: 60px; object-fit: contain; background: #fff; border-radius: 8px; border: 1px solid var(--line); }
+.sg-big img { width: 240px; height: 80px; }
+.sg-ok { color: #248A3D; font-size: 13px; }
+.sg-bad { color: var(--error); font-size: 13px; }
+.sign { display: grid; gap: 8px; }
+.sign-canvas { position: relative; border: 1.5px dashed var(--line); border-radius: 14px; background: #fff; touch-action: none; }
+.sign-canvas canvas { display: block; width: 100%; cursor: crosshair; }
+.sign-canvas .link-btn { position: absolute; right: 10px; bottom: 0; }
+.sign-legal { color: var(--muted); font-size: 12px; line-height: 1.45; }
+.sp-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+.sp-side { position: sticky; top: calc(var(--head-h) + 16px); }
+.sp-doc .btn { margin-top: 4px; }
+.sp-ready { font-size: 19px; color: #248A3D; }
+@media (max-width: 1000px) { .sp-grid { grid-template-columns: 1fr; } .sp-side { position: static; } }
+@media (max-width: 768px) {
+  .jr-item { grid-template-columns: minmax(0, 1fr) auto; }
+  .jr-item .jr-del { grid-column: 1 / -1; justify-self: start; padding: 0; }
+  .cmp-pick { grid-template-columns: 1fr; }
+  .ed-bar { top: calc(var(--head-h) + 6px); }
+  .sg-item { flex-direction: column; align-items: flex-start; }
+  .foot-nav { display: block; }
+}
+.sh-box > .btn, .sh-box > .sign > .btn, .sh-out .btn { justify-self: start; }

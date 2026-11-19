@@ -281,5 +281,27 @@
     });
   }
 
-  root.DocumExport = { toHTML: toHTML, downloadDocx: downloadDocx, downloadPdf: downloadPdf };
+  // Сравнение версий в .docx с настоящими исправлениями Word: их можно принять или отклонить в Word.
+  function downloadRedline(list, name, meta) {
+    return loadScript('vendor/docx.iife.js').then(function () {
+      var D = root.docx = root.docx || (typeof docx !== 'undefined' ? docx : undefined);
+      var id = 1, date = new Date().toISOString().replace(/\.\d+Z$/, 'Z'), author = (meta && meta.author) || 'docum.kz';
+      var run = function (o) {
+        var opts = { text: o.s.replace(/\t/g, '    '), font: FONT_DOCX, size: 22 };
+        if (o.t === 'ins') return new D.InsertedTextRun(Object.assign({ id: id++, author: author, date: date }, opts));
+        if (o.t === 'del') return new D.DeletedTextRun(Object.assign({ id: id++, author: author, date: date }, opts));
+        return new D.TextRun(opts);
+      };
+      var children = [];
+      if (meta && meta.title) children.push(new D.Paragraph({ spacing: { after: 200 }, children: [new D.TextRun({ text: meta.title, bold: true, font: FONT_DOCX, size: 24 })] }));
+      list.forEach(function (p) {
+        var ops = p.type === 'chg' ? p.ops : p.type === 'ins' ? [{ t: 'ins', s: p.b }] : p.type === 'del' ? [{ t: 'del', s: p.a }] : [{ t: 'eq', s: p.a }];
+        children.push(new D.Paragraph({ spacing: { after: 80 }, children: ops.map(run) }));
+      });
+      var doc = new D.Document({ creator: 'docum.kz', features: { trackRevisions: true }, sections: [{ properties: { page: { margin: { top: 1134, bottom: 1134, left: 1701, right: 850 } } }, children: children }] });
+      return D.Packer.toBlob(doc);
+    }).then(function (blob) { saveBlob(blob, name + '.docx'); });
+  }
+
+  root.DocumExport = { toHTML: toHTML, downloadDocx: downloadDocx, downloadPdf: downloadPdf, downloadRedline: downloadRedline };
 })(window);
