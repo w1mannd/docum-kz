@@ -86,8 +86,6 @@
     var ttl = el('div', 'civis-ttl');
     var h = el('h2', null, tx('title')); h.id = 'civis-title';
     ttl.appendChild(h); ttl.appendChild(el('span', 'civis-sub', tx('sub')));
-    modeEl = el('span', 'civis-mode');
-    ttl.appendChild(modeEl);
     var x = el('button', 'civis-x'); x.type = 'button'; x.setAttribute('aria-label', tx('close'));
     x.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
     x.addEventListener('click', close);
@@ -121,7 +119,7 @@
     });
   }
 
-  function setMode() { modeEl.textContent = state.ai ? tx('modeAi') : tx('modeOff'); modeEl.classList.toggle('is-ai', !!state.ai); }
+  function setMode() { /* надпись о режиме убрана по просьбе автора */ }
 
   function checkAi() {
     setMode();
