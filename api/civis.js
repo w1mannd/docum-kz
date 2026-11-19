@@ -106,7 +106,8 @@ module.exports = async function handler(req, res) {
 
   try {
     const ac = new AbortController(); const timer = setTimeout(() => ac.abort(), 25000);
-    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(MODEL) + ':generateContent', {
+    const useModel = (req.query && /^gemini-[\w.-]+$/.test(req.query.try || '')) ? req.query.try : MODEL; // ВРЕМЕННО
+    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(useModel) + ':generateContent', {
       method: 'POST', signal: ac.signal,
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
       body: JSON.stringify({
@@ -117,7 +118,7 @@ module.exports = async function handler(req, res) {
     });
     clearTimeout(timer);
     const data = await r.json();
-    if (!r.ok) { res.status(502).json({ error: 'model', status: r.status }); return; }
+    if (!r.ok) { res.status(502).json({ error: 'model', status: r.status, detail: (data.error && data.error.message || '').slice(0, 200) }); return; }
     const text = ((data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [])
       .map((p) => p.text || '').join('').trim();
     if (!text) { res.status(502).json({ error: 'empty-answer' }); return; }
