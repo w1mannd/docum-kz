@@ -10,7 +10,7 @@ const NPA = require('../npa/npa.json');
 const index = new S.Index(NPA.units);
 
 // Модель закреплена в коде: точное имя версии, без псевдонимов вида «-latest», поэтому Google не подменит её другой.
-const MODEL = 'gemini-2.5-flash';
+const MODEL = 'gemini-3.1-flash-lite';
 const MAX_Q = 600, MAX_TURNS = 6, K = 6, MAX_CTX = 26000;
 const hits = new Map();   // простое ограничение частоты: не больше 20 вопросов за 10 минут с одного адреса
 
@@ -68,13 +68,6 @@ function citedNums(text) {
 
 module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
-  if (req.method === 'GET' && req.query && req.query.models === '1' && process.env.GEMINI_API_KEY) {
-    // ВРЕМЕННО: список моделей, чтобы выбрать актуальную. Удалить после настройки.
-    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': process.env.GEMINI_API_KEY } });
-    const d = await r.json();
-    res.status(200).json((d.models || []).filter((m) => (m.supportedGenerationMethods || []).indexOf('generateContent') >= 0).map((m) => m.name + ' | ' + (m.displayName || '')));
-    return;
-  }
   if (req.method === 'GET') { res.status(200).json({ ai: !!process.env.GEMINI_API_KEY, model: process.env.GEMINI_API_KEY ? MODEL : null }); return; }
   if (req.method !== 'POST') { res.status(405).json({ error: 'method' }); return; }
   if (!process.env.GEMINI_API_KEY) { res.status(503).json({ error: 'off' }); return; }
@@ -106,8 +99,7 @@ module.exports = async function handler(req, res) {
 
   try {
     const ac = new AbortController(); const timer = setTimeout(() => ac.abort(), 25000);
-    const useModel = (req.query && /^gemini-[\w.-]+$/.test(req.query.try || '')) ? req.query.try : MODEL; // ВРЕМЕННО
-    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(useModel) + ':generateContent', {
+    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(MODEL) + ':generateContent', {
       method: 'POST', signal: ac.signal,
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
       body: JSON.stringify({
