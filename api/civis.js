@@ -68,6 +68,13 @@ function citedNums(text) {
 
 module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
+  if (req.method === 'GET' && req.query && req.query.models === '1' && process.env.GEMINI_API_KEY) {
+    // ВРЕМЕННО: список моделей, чтобы выбрать актуальную. Удалить после настройки.
+    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': process.env.GEMINI_API_KEY } });
+    const d = await r.json();
+    res.status(200).json((d.models || []).filter((m) => (m.supportedGenerationMethods || []).indexOf('generateContent') >= 0).map((m) => m.name + ' | ' + (m.displayName || '')));
+    return;
+  }
   if (req.method === 'GET') { res.status(200).json({ ai: !!process.env.GEMINI_API_KEY, model: process.env.GEMINI_API_KEY ? MODEL : null }); return; }
   if (req.method !== 'POST') { res.status(405).json({ error: 'method' }); return; }
   if (!process.env.GEMINI_API_KEY) { res.status(503).json({ error: 'off' }); return; }
