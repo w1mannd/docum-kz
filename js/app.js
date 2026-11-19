@@ -101,6 +101,25 @@
     });
   }
 
+  // Консультант «Цивис»: скрипты грузятся только при первом обращении к кнопке.
+  var cfab = document.querySelector('.civis-fab'), cload = null;
+  function civisLoad() {
+    if (window.Civis) return Promise.resolve();
+    if (cload) return cload;
+    var one = function (src) {
+      return new Promise(function (ok, fail) { var s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = fail; document.head.appendChild(s); });
+    };
+    cload = one(cfab.getAttribute('data-s1')).then(function () { return one(cfab.getAttribute('data-s2')); });
+    cload.catch(function () { cload = null; });
+    return cload;
+  }
+  if (cfab) {
+    cfab.addEventListener('pointerenter', function () { civisLoad().catch(function () {}); });
+    cfab.addEventListener('click', function () {
+      civisLoad().then(function () { window.Civis.bind(cfab); window.Civis.toggle(); }).catch(function () {});
+    });
+  }
+
   /* Оговорка в footer */
   var info = document.querySelector('.note-btn'), pop = document.getElementById('note-pop');
   if (info && pop) {
@@ -117,6 +136,7 @@
 
   applyTheme();
   applyLang();
+  document.documentElement.classList.remove('i18n-wait');
 
   // Блоки страницы плавно выезжают снизу, когда доходят до экрана.
   var calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -128,8 +148,11 @@
       list.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); seen.unobserve(e.target); } });
     }, { rootMargin: '0px 0px -8% 0px', threshold: 0.12 });
     document.documentElement.classList.add('js-reveal');
+    var fold = window.innerHeight;
     document.querySelectorAll(sel).forEach(function (n) {
       if (n.closest('.hero')) return;
+      // То, что видно сразу при открытии, показывается без ожидания.
+      if (n.getBoundingClientRect().top < fold) return;
       var sibs = Array.prototype.filter.call(n.parentNode.children, function (x) { return x.matches(sel); });
       n.setAttribute('data-reveal', '');
       n.style.setProperty('--d', Math.min(sibs.indexOf(n), 4) * 0.07 + 's');

@@ -55,7 +55,7 @@
     tab.setAttribute('aria-current', 'page');
     current = tab;
     place(tab, true);
-    setTimeout(function () { window.location.href = tab.href; }, 300);
+    setTimeout(function () { window.location.href = tab.href; }, 160);
   });
 
   // Стекло слегка увеличивается, пока палец на меню.
