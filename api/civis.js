@@ -9,7 +9,8 @@ const S = require('../js/civis-search.js');
 const NPA = require('../npa/npa.json');
 const index = new S.Index(NPA.units);
 
-const MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+// Модель закреплена в коде: точное имя версии, без псевдонимов вида «-latest», поэтому Google не подменит её другой.
+const MODEL = 'gemini-2.5-flash';
 const MAX_Q = 600, MAX_TURNS = 6, K = 6, MAX_CTX = 26000;
 const hits = new Map();   // простое ограничение частоты: не больше 20 вопросов за 10 минут с одного адреса
 
