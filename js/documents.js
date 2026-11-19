@@ -23,68 +23,101 @@
   var id = query.get('id');
 
   /* ================= Журнал ================= */
+  var ICON = {
+    contracts: '<path d="M7 3.5h7l4 4V20a.5.5 0 0 1-.5.5h-10A.5.5 0 0 1 7 20z"/><path d="M14 3.5V8h4M9.5 12h6M9.5 15.5h6"/>',
+    accounting: '<path d="M6.5 3.5h11v17l-2.75-1.6-2.75 1.6-2.75-1.6-2.75 1.6z"/><path d="M9.5 8h5M9.5 11.5h5M9.5 15h3"/>',
+    hr: '<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.8-3.7 3.4-5.6 7-5.6s6.2 1.9 7 5.6"/>'
+  };
+  function icon(code) {
+    var cat = (TPL.DOCS[code] || {}).cat || 'contracts', w = el('span', 'jr-ico jr-ico-' + cat);
+    w.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICON[cat] + '</svg>';
+    return w;
+  }
+  // Путь документа: создан → изменён → отправлен → согласован.
+  function flow(r) {
+    var steps = [['created', true], ['edited', r.versions.length > 1], ['sent', (r.shares || []).length > 0 || r.status === 'sent' || r.status === 'signed'], ['signed', r.status === 'signed']];
+    var w = el('ol', 'jr-flow');
+    steps.forEach(function (s) { var li = el('li', s[1] ? 'is-on' : ''); li.appendChild(el('span', null, t('dm.flow.' + s[0]))); w.appendChild(li); });
+    return w;
+  }
   function renderList() {
     app.textContent = '';
-    var head = el('div', 'page-head');
-    head.appendChild(el('h1', null, t('dm.title')));
-    head.appendChild(el('p', 'lead', t('dm.lead')));
+    var head = el('div', 'jr-top');
+    var ht = el('div');
+    ht.appendChild(el('h1', null, t('dm.title')));
+    ht.appendChild(el('p', 'lead', t('dm.lead')));
+    head.appendChild(ht);
+    var add = el('a', 'btn btn-primary jr-new', t('dm.new')); add.href = 'constructor.html';
+    head.appendChild(add);
     app.appendChild(head);
 
-    var bar = el('div', 'jr-bar');
+    var stats = el('div', 'jr-stats'), status = 'all';
+    app.appendChild(stats);
+    var sw = el('div', 'jr-search');
+    sw.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg>';
     var search = el('input', 'input'); search.type = 'search'; search.placeholder = t('dm.search'); search.setAttribute('aria-label', t('dm.search'));
-    var chips = el('div', 'chips'), status = 'all';
-    bar.appendChild(search); bar.appendChild(chips);
-    app.appendChild(bar);
+    sw.appendChild(search);
+    app.appendChild(sw);
     var list = el('div', 'jr-list'); app.appendChild(list);
     var empty = el('div', 'jr-empty'); app.appendChild(empty);
 
-    var tools = el('div', 'jr-tools');
+    var tools = el('section', 'jr-backup');
+    tools.appendChild(el('h2', null, t('dm.backupTitle')));
+    tools.appendChild(el('p', 'jr-note', t('dm.backupNote')));
+    var row = el('div', 'sh-row');
     var msg = el('p', 'msg');
     var file = el('input'); file.type = 'file'; file.accept = 'application/json,.json'; file.hidden = true;
-    tools.appendChild(btn('btn btn-ghost', t('dm.backup'), backup));
-    tools.appendChild(btn('btn btn-ghost', t('dm.restore'), function () { file.click(); }));
-    tools.appendChild(file);
+    row.appendChild(btn('btn btn-ghost', t('dm.backup'), backup));
+    row.appendChild(btn('btn btn-ghost', t('dm.restore'), function () { file.click(); }));
+    tools.appendChild(row); tools.appendChild(file); tools.appendChild(msg);
     app.appendChild(tools);
-    app.appendChild(el('p', 'jr-note', t('dm.backupNote')));
-    app.appendChild(msg);
 
     var all = [];
+    function drawStats() {
+      stats.textContent = '';
+      [['all', all.length], ['final', 0], ['sent', 0], ['signed', 0]].forEach(function (k) {
+        var n = k[0] === 'all' ? k[1] : all.filter(function (r) { return r.status === k[0]; }).length;
+        var b = btn('jr-stat jr-stat-' + k[0], null, function () { status = k[0]; drawStats(); draw(); });
+        b.setAttribute('aria-pressed', String(status === k[0]));
+        b.appendChild(el('b', null, String(n)));
+        b.appendChild(el('span', null, k[0] === 'all' ? t('dm.k.all') : t('dm.s.' + k[0])));
+        stats.appendChild(b);
+      });
+    }
     function draw() {
       var q = search.value.trim().toLowerCase();
       list.textContent = '';
-      var shown = all.filter(function (r) {
+      all.filter(function (r) {
         return (status === 'all' || r.status === status) && titleOf(r).toLowerCase().indexOf(q) >= 0;
-      });
-      shown.forEach(function (r, i) {
-        var card = el('div', 'jr-item');
+      }).forEach(function (r, i) {
+        var card = el('article', 'jr-item');
         card.style.setProperty('--i', i);
         var a = el('a', 'jr-main'); a.href = 'documents.html?id=' + r.id;
-        a.appendChild(el('span', 'jr-title', titleOf(r)));
-        a.appendChild(el('span', 'jr-meta', f('dm.c.ver', { n: r.versions.length }) + ' · ' + f('dm.c.upd', { d: fmt(r.updated) })));
+        a.appendChild(icon(r.code));
+        var tx = el('span', 'jr-txt');
+        tx.appendChild(el('span', 'jr-title', titleOf(r)));
+        tx.appendChild(el('span', 'jr-meta', f('dm.c.ver', { n: r.versions.length }) + ' · ' + f('dm.c.upd', { d: fmt(r.updated) })));
+        a.appendChild(tx);
         card.appendChild(a);
         card.appendChild(el('span', 'jr-badge jr-' + r.status, t('dm.s.' + r.status)));
-        card.appendChild(btn('jr-del', t('dm.del'), function () {
-          if (!window.confirm(t('dm.delAsk'))) return;
-          ST.del(r.id).then(load);
-        }));
+        card.appendChild(flow(r));
+        var del = btn('jr-del', null, function () { if (window.confirm(t('dm.delAsk'))) ST.del(r.id).then(load); });
+        del.setAttribute('aria-label', t('dm.del') + ': ' + titleOf(r));
+        del.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l.8 12.2a1 1 0 0 0 1 .8h6.4a1 1 0 0 0 1-.8L17 7"/></svg>';
+        card.appendChild(del);
         list.appendChild(card);
       });
       empty.textContent = '';
       if (!all.length) {
+        var face = el('span', 'jr-empty-face');
+        face.innerHTML = '<svg viewBox="6 5.5 28 30" aria-hidden="true"><path d="M12.5 7.5h11l6.5 6.5v18a2.5 2.5 0 0 1-2.5 2.5h-15A2.5 2.5 0 0 1 10 32V10a2.5 2.5 0 0 1 2.5-2.5z" fill="#fff"/><path d="M23.5 7.5V14h6.5z" fill="#9CC8FF"/><circle cx="16.3" cy="20.5" r="1.7" fill="#0B1F3A"/><circle cx="23.7" cy="20.5" r="1.7" fill="#0B1F3A"/><path d="M16.8 26.4q3.2-2 6.4 0" fill="none" stroke="#0B1F3A" stroke-width="1.7" stroke-linecap="round"/></svg>';
+        empty.appendChild(face);
+        empty.appendChild(el('h2', null, t('dm.empty2')));
         empty.appendChild(el('p', null, t('dm.empty')));
         var go = el('a', 'btn btn-primary', t('dm.toBuilder')); go.href = 'constructor.html';
         empty.appendChild(go);
       }
     }
-    ['all', 'draft', 'final', 'sent', 'signed'].forEach(function (s) {
-      var c = btn('chip', s === 'all' ? t('dm.all') : t('dm.s.' + s), function () {
-        status = s;
-        chips.querySelectorAll('.chip').forEach(function (x) { x.setAttribute('aria-pressed', String(x === c)); });
-        draw();
-      });
-      c.setAttribute('aria-pressed', String(s === 'all'));
-      chips.appendChild(c);
-    });
     search.addEventListener('input', draw);
 
     function backup() {
@@ -106,7 +139,7 @@
       }).catch(function () { flash(msg, t('dm.badFile'), true); });
       file.value = '';
     });
-    function load() { ST.all().then(function (rows) { all = rows; draw(); }); }
+    function load() { ST.all().then(function (rows) { all = rows; drawStats(); draw(); }); }
     load();
   }
 
@@ -117,10 +150,16 @@
     app.textContent = '';
     var back = el('a', 'crumb', t('dm.back')); back.href = 'documents.html';
     app.appendChild(back);
-    var head = el('div', 'jr-head');
-    head.appendChild(el('h1', 'builder-title', titleOf(rec)));
+    var head = el('div', 'jr-hero');
+    head.appendChild(icon(rec.code));
+    var hx = el('div', 'jr-hero-txt');
+    var h1 = el('h1', 'builder-title', titleOf(rec));
+    hx.appendChild(h1);
+    hx.appendChild(el('p', 'jr-meta', f('dm.created', { d: fmt(rec.created) }) + ' · ' + f('dm.c.ver', { n: rec.versions.length }) + ' · ' + f('dm.c.upd', { d: fmt(rec.updated) })));
+    head.appendChild(hx);
     head.appendChild(el('span', 'jr-badge jr-' + rec.status, t('dm.s.' + rec.status)));
     app.appendChild(head);
+    app.appendChild(flow(rec));
     var tabs = el('div', 'jr-tabs'); tabs.setAttribute('role', 'tablist');
     var panel = el('div', 'jr-panel');
     [['edit', 'dm.t.edit'], ['ver', 'dm.t.ver'], ['cmp', 'dm.t.cmp'], ['share', 'dm.t.share']].forEach(function (x) {
@@ -358,18 +397,23 @@
     box.appendChild(el('h2', 'panel-title', t('dm.shTitle')));
     box.appendChild(el('p', 'lead-s', t('dm.shLead')));
     var mode = 'sign';
+    var step = function (n, title) { var h = el('h3', 'sh-step'); h.appendChild(el('span', 'sh-num', String(n))); h.appendChild(el('span', null, title)); return h; };
+    box.appendChild(step(1, t('dm.step1')));
     var modes = el('div', 'sh-modes');
-    [['sign', 'dm.mSign'], ['fill', 'dm.mFill']].forEach(function (m) {
-      var lab = el('label', 'check'); var r = el('input'); r.type = 'radio'; r.name = 'sh-mode'; r.value = m[0];
+    [['sign', 'dm.mSign', 'dm.mSignD'], ['fill', 'dm.mFill', 'dm.mFillD']].forEach(function (m) {
+      var lab = el('label', 'sh-mode'); var r = el('input'); r.type = 'radio'; r.name = 'sh-mode'; r.value = m[0];
       r.checked = m[0] === 'sign'; r.disabled = m[0] === 'fill' && !canFill;
       r.addEventListener('change', function () { mode = m[0]; });
-      lab.appendChild(r); lab.appendChild(el('span', null, t(m[1]))); modes.appendChild(lab);
+      var tx = el('span'); tx.appendChild(el('b', null, t(m[1]))); tx.appendChild(el('span', null, t(m[2])));
+      lab.appendChild(r); lab.appendChild(tx); modes.appendChild(lab);
     });
     box.appendChild(modes);
     if (!canFill) box.appendChild(el('p', 'jr-note', t('dm.noFill')));
+    box.appendChild(step(2, t('dm.step2')));
     box.appendChild(el('p', 'notice notice-warn', t('dm.pdWarn')));
     var okL = el('label', 'check'); var ok = el('input'); ok.type = 'checkbox';
     okL.appendChild(ok); okL.appendChild(el('span', null, t('dm.pdOk'))); box.appendChild(okL);
+    box.appendChild(step(3, t('dm.step3')));
     var make = btn('btn btn-primary', t('dm.make'));
     var out = el('div', 'sh-out'), msg = el('p', 'msg');
     box.appendChild(make); box.appendChild(msg); box.appendChild(out);
@@ -377,25 +421,36 @@
       if (!ok.checked) { flash(msg, t('dm.needOk'), true); return; }
       msg.textContent = '';
       var lang = v.lang || rec.lang, data = v.data || {};
-      // Неизменённый документ передаётся данными и собирается заново у получателя; изменённый — текстом.
+      // В ссылке — данные анкеты и правки относительно шаблона; получатель собирает документ и сверяет отпечаток.
       var payload = { t: 'q', v: 1, id: rec.id, n: v.n, code: rec.code, lang: lang, number: rec.number, mode: mode,
-        from: data.ip_name || '', hash: v.hash, at: Date.now() };
-      if (v.edited) payload.blocks = v.blocks; else payload.data = data;
+        from: data.ip_name || '', hash: v.hash, at: Date.now(), data: data };
+      if (v.edited) payload.patch = ST.patch(TPL.build(rec.code, data, lang), v.blocks);
       if (mode === 'fill') payload.fields = fields;
       ST.encode(payload).then(function (code) {
         var url = location.origin + location.pathname.replace(/documents\.html$/, '') + 'share.html#' + code;
         out.textContent = '';
         var field = el('textarea', 'input sh-link'); field.readOnly = true; field.rows = 3; field.value = url;
         out.appendChild(field);
-        out.appendChild(el('p', 'jr-note', f('dm.long', { n: url.length })));
+        // Лимит одного сообщения Telegram — 4096 символов.
+        var fits = url.length <= 4000, meter = el('div', 'sh-meter' + (fits ? '' : ' is-long'));
+        var bar = el('span'); bar.style.width = Math.min(100, url.length / 40) + '%'; meter.appendChild(bar);
+        out.appendChild(meter);
+        out.appendChild(el('p', 'jr-note', f('dm.long', { n: url.length }) + ' · ' + t(fits ? 'dm.okLen' : 'dm.longLen')));
         var row = el('div', 'sh-row');
-        row.appendChild(btn('btn btn-ghost', t('dm.copy'), function (e) {
+        row.appendChild(btn('btn btn-primary', t('dm.copy'), function (e) {
           var b = e.currentTarget;
           (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(function () { b.textContent = t('dm.copied'); }, function () { field.select(); document.execCommand('copy'); b.textContent = t('dm.copied'); });
         }));
         if (navigator.share) row.appendChild(btn('btn btn-ghost', t('dm.shareBtn'), function () { navigator.share({ title: titleOf(rec), url: url }).catch(function () {}); }));
+        // Запасной путь для длинных документов: тот же запрос файлом, его открывают на странице share.html.
+        row.appendChild(btn('btn btn-ghost', t('dm.file'), function () {
+          var blob = new Blob([JSON.stringify({ app: 'docum.kz', kind: 'share', data: code })], { type: 'application/json' });
+          var a = document.createElement('a'), u = URL.createObjectURL(blob);
+          a.href = u; a.download = 'docum-' + rec.code + '-' + (rec.number || rec.id.slice(0, 6)) + '.docum.json';
+          document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(u); }, 2000);
+        }));
         out.appendChild(row);
-        var badge = app.querySelector('.jr-head .jr-badge');
+        var badge = app.querySelector('.jr-hero .jr-badge');
         if (badge && rec.status !== 'signed') { badge.className = 'jr-badge jr-sent'; badge.textContent = t('dm.s.sent'); }
         rec.shares = rec.shares || [];
         rec.shares.push({ at: Date.now(), n: v.n, mode: mode });

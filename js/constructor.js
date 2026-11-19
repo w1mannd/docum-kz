@@ -666,14 +666,19 @@
     st.id = 'dl-status';
     st.setAttribute('role', 'status');
     main.appendChild(st);
-    var keep = el('button', 'link-btn', t('b.toJournal'));
-    keep.type = 'button';
+    // Действия после проверки: сохранить в журнал (с состоянием «сохранено») и начать заново.
+    var acts = el('div', 'review-acts');
+    var keep = el('button', 'btn btn-ghost j-save');
+    keep.type = 'button'; keep.id = 'j-save';
+    keep.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 7c0-1.1.9-2 2-2h4l2 2h7c1.1 0 2 .9 2 2v8c0 1.1-.9 2-2 2h-13c-1.1 0-2-.9-2-2z"/><path d="M12 10.5v5M9.5 13h5"/></svg>';
+    keep.appendChild(el('span', null, t('b.toJournal')));
     keep.addEventListener('click', saveToJournal);
-    main.appendChild(keep);
-    var again = el('button', 'link-btn', t('b.restart'));
+    acts.appendChild(keep);
+    main.appendChild(acts);
+    var again = el('button', 'link-btn review-again', t('b.restart'));
     again.type = 'button';
     again.addEventListener('click', function () { start(state.code); scrollTop(); });
-    main.appendChild(again);
+    acts.appendChild(again);
   }
 
   // Текст документа без оформления: для вставки в письмо или мессенджер.
@@ -703,6 +708,16 @@
 
   /* ---------- Журнал «Мои документы» ---------- */
   // Готовый документ попадает в журнал: новый — новой записью, изменённый — новой версией той же записи.
+  // Кнопка «Сохранить» превращается в отметку «Сохранено» со ссылкой на редактор.
+  function markSaved(jid) {
+    var keep = document.getElementById('j-save');
+    if (!keep) return;
+    var a = el('a', 'btn btn-ghost j-save is-saved');
+    a.id = 'j-save'; a.href = 'documents.html?id=' + jid;
+    a.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+    a.appendChild(el('span', null, t('b.inJournal')));
+    keep.replaceWith(a);
+  }
   function saveToJournal() {
     var ST = window.DocumStore;
     if (!ST) return Promise.resolve(null);
@@ -724,12 +739,7 @@
       });
     }).then(function (rec) {
       if (rec) state.journalId = rec.id;
-      var st = document.getElementById('dl-status');
-      if (rec && st) {
-        st.className = 'msg'; st.textContent = '';
-        var a = el('a', null, t('b.inJournal')); a.href = 'documents.html?id=' + rec.id;
-        st.appendChild(a);
-      }
+      if (rec) markSaved(rec.id);
       return rec;
     }).catch(function (e) { if (window.console) console.error(e); return null; });
   }

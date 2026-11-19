@@ -14,7 +14,20 @@
   function fmt(ms) { var d = new Date(ms), p = function (n) { return ('0' + n).slice(-2); }; return p(d.getDate()) + '.' + p(d.getMonth() + 1) + '.' + d.getFullYear() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()); }
 
   var raw = location.hash.slice(1), payload = null;
-  function fail() { app.textContent = ''; app.appendChild(el('h1', null, t('sp.title'))); app.appendChild(el('p', 'notice notice-warn', t('sp.bad'))); }
+  // Без ссылки или с повреждённой ссылкой страница предлагает открыть файл .docum.json.
+  function fail(noLink) {
+    app.textContent = '';
+    app.appendChild(el('h1', null, t('sp.title')));
+    app.appendChild(el('p', noLink ? 'lead' : 'notice notice-warn', t(noLink ? 'sp.noLink' : 'sp.bad')));
+    var file = el('input'); file.type = 'file'; file.accept = '.json,application/json'; file.hidden = true;
+    var b = btn('btn btn-ghost', t('sp.openFile'), function () { file.click(); });
+    file.addEventListener('change', function () {
+      var fl = file.files[0]; if (!fl) return;
+      fl.text().then(function (txt) { var d = JSON.parse(txt); if (!d || d.app !== 'docum.kz' || d.kind !== 'share') throw new Error('bad'); return ST.decode(d.data); })
+        .then(function (p) { payload = p; render(); }).catch(function () { fail(false); });
+    });
+    app.appendChild(b); app.appendChild(file);
+  }
 
   function sheetOf(blocks, lang) { var s = el('div', 'sheet'); s.lang = lang; s.innerHTML = EX.toHTML(blocks); return s; }
 
@@ -23,7 +36,7 @@
     app.textContent = '';
     // Введённое сохраняется в самом запросе: при смене языка страницы ничего не теряется.
     p.data = p.data || {};
-    var blocks = p._blocks || p.blocks || TPL.build(p.code, p.data, p.lang), data = p.data, errors = {};
+    var blocks = p._blocks || p.blocks || ST.applyPatch(TPL.build(p.code, p.data, p.lang), p.patch), data = p.data, errors = {};
     var head = el('div', 'page-head');
     head.appendChild(el('h1', null, t('d.' + p.code) + (p.number ? ' № ' + p.number : '')));
     if (p.from) head.appendChild(el('p', 'lead', f('sp.from', { n: p.from })));
@@ -152,7 +165,7 @@
     else if (payload.t === 'r' && ok) renderResponse(payload);
     else fail();
   }
-  if (!raw) fail();
-  else ST.decode(raw).then(function (p) { payload = p; render(); }).catch(fail);
+  if (!raw) fail(true);
+  else ST.decode(raw).then(function (p) { payload = p; render(); }).catch(function () { fail(false); });
   document.addEventListener('docum:lang', function () { if (payload) render(); });
 })();

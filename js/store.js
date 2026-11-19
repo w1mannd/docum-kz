@@ -81,6 +81,32 @@
   };
   api.text = function (blocks) { return api.units(blocks).join('\n'); };
 
+  // Правки относительно шаблона: какие блоки заменены, вставлены или удалены.
+  // В ссылку уходят данные анкеты и только эти правки; получатель собирает документ заново.
+  api.patch = function (base, target) {
+    var A = base.map(function (b) { return JSON.stringify(b); }), B = target.map(function (b) { return JSON.stringify(b); });
+    var n = A.length, m = B.length, dp = [], i, j;
+    for (i = 0; i <= n; i++) dp.push(new Uint16Array(m + 1));
+    for (i = n - 1; i >= 0; i--) for (j = m - 1; j >= 0; j--) dp[i][j] = A[i] === B[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    var hunks = [], h = null; i = 0; j = 0;
+    var flush = function () { if (h) { hunks.push([h.at, h.del, h.ins]); h = null; } };
+    while (i < n || j < m) {
+      if (i < n && j < m && A[i] === B[j]) { flush(); i++; j++; continue; }
+      if (!h) h = { at: i, del: 0, ins: [] };
+      if (j < m && (i >= n || dp[i][j + 1] >= dp[i + 1][j])) { h.ins.push(target[j]); j++; }
+      else { h.del++; i++; }
+    }
+    flush();
+    return hunks;
+  };
+  api.applyPatch = function (base, hunks) {
+    var out = JSON.parse(JSON.stringify(base));
+    (hunks || []).slice().sort(function (a, b) { return b[0] - a[0]; }).forEach(function (h) {
+      Array.prototype.splice.apply(out, [h[0], h[1]].concat(h[2]));
+    });
+    return out;
+  };
+
   api.hash = function (text) {
     if (!(root.crypto && root.crypto.subtle && root.TextEncoder)) return Promise.resolve('');
     return root.crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)).then(function (buf) {
@@ -117,7 +143,7 @@
   // Текст ответа: при заполнении документ собирается заново из данных, иначе берётся отправленная версия по отпечатку.
   api.responseBlocks = function (p, rec) {
     if (p.blocks) return p.blocks;
-    if (p.data && root.DocumTemplates) return root.DocumTemplates.build(p.code, p.data, p.lang);
+    if (p.data && root.DocumTemplates) return api.applyPatch(root.DocumTemplates.build(p.code, p.data, p.lang), p.patch);
     var v = rec && rec.versions.filter(function (x) { return x.hash === p.hash; })[0];
     return v ? v.blocks : null;
   };
