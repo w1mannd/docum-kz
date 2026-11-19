@@ -469,9 +469,10 @@ body { transition: opacity .15s ease; }
 .civis-fab { position: fixed; right: 24px; bottom: 24px; z-index: 45; display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 20px 0 8px; border: 0; border-radius: 999px; background: var(--btn); color: #fff; font: 600 16px/1 var(--font); box-shadow: 0 12px 30px -8px rgba(0, 113, 227, .55); cursor: pointer; transition: transform .25s var(--ease), opacity .2s ease; animation: rise .5s var(--ease) .2s backwards; }
 .civis-fab:hover { transform: translateY(-2px); }
 .civis-fab:active { transform: scale(.97); }
-.civis-fab-av, .civis-av { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; font-weight: 700; font-size: 17px; }
+.civis-fab-av, .civis-av { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; overflow: hidden; }
+.civis-face { width: 100%; height: 100%; }
+.civis-av { background: linear-gradient(145deg, #2F8CFF, #0062C4); }
 .civis-fab-av { background: rgba(255, 255, 255, .22); }
-.civis-av { background: var(--btn); color: #fff; }
 .civis-open .civis-fab { opacity: 0; pointer-events: none; }
 .civis { position: fixed; right: 24px; bottom: 24px; z-index: 60; width: 400px; height: min(660px, calc(100vh - 48px)); display: flex; flex-direction: column; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 24px; box-shadow: 0 24px 60px -12px rgba(0, 0, 0, .35); opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(16px) scale(.98); transform-origin: bottom right; transition: opacity .25s var(--ease), transform .4s var(--ease), visibility 0s linear .4s; }
 .civis.is-open { opacity: 1; visibility: visible; pointer-events: auto; transform: none; transition: opacity .25s var(--ease), transform .4s var(--ease); }
@@ -518,3 +519,94 @@ body { transition: opacity .15s ease; }
   .civis-open .tab-bar { visibility: hidden; }
 }
 @media (max-width: 360px) { .tab { font-size: 9.5px; } }
+
+/* ---------- Аватарка Цивиса: моргание и «раздумье» ---------- */
+.civis-eyes { transform-box: fill-box; transform-origin: center; animation: civis-blink 5s infinite; }
+@keyframes civis-blink { 0%, 93%, 100% { transform: scaleY(1); } 96% { transform: scaleY(.1); } }
+.civis.is-busy .civis-head .civis-face { animation: civis-think 1.2s ease-in-out infinite; transform-origin: 50% 80%; }
+@keyframes civis-think { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-6deg); } 75% { transform: rotate(6deg); } }
+
+/* ---------- Живой первый экран ---------- */
+.hero { overflow: hidden; }
+.hero-visual { position: relative; display: flex; justify-content: center; isolation: isolate; }
+.hero-glow { position: absolute; z-index: -1; left: 50%; top: 50%; width: 160%; aspect-ratio: 1; transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none;
+  background: radial-gradient(closest-side at 30% 38%, rgba(0, 113, 227, .42), transparent 72%), radial-gradient(closest-side at 72% 60%, rgba(140, 90, 255, .34), transparent 72%), radial-gradient(closest-side at 45% 82%, rgba(0, 190, 170, .26), transparent 72%);
+  filter: blur(18px); animation: glow-drift 14s ease-in-out infinite alternate; }
+@keyframes glow-drift { from { transform: translate(-50%, -50%) rotate(0deg) scale(1); } to { transform: translate(-50%, -50%) rotate(40deg) scale(1.08); } }
+.hero-chip { position: absolute; display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px 9px 10px; border-radius: 999px; background: rgba(255, 255, 255, .82); -webkit-backdrop-filter: blur(12px) saturate(180%); backdrop-filter: blur(12px) saturate(180%); border: .5px solid rgba(0, 0, 0, .08); box-shadow: 0 10px 24px -10px rgba(0, 0, 0, .25); color: var(--text); font-size: 14px; font-weight: 600; white-space: nowrap; animation: chip-in .7s var(--ease) backwards, chip-float 6s ease-in-out infinite; }
+.hero-chip svg { width: 18px; height: 18px; color: var(--accent); }
+.hero-chip.c1 { top: 14%; left: 2%; animation-delay: .35s, 1s; }
+.hero-chip.c2 { top: 44%; right: 0; animation-delay: .45s, 2.5s; }
+.hero-chip.c3 { bottom: 16%; left: 6%; animation-delay: .55s, 4s; }
+@keyframes chip-in { from { opacity: 0; transform: translateY(12px) scale(.94); } }
+@keyframes chip-float { 0%, 100% { translate: 0 0; } 50% { translate: 0 -8px; } }
+
+/* ---------- Полоса счётчиков ---------- */
+.stats { padding: 8px 0 40px; }
+.stats-in { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px; border-top: 1px solid var(--line); padding-top: 32px; }
+.stat b { display: block; font-size: 44px; line-height: 1; font-weight: 700; letter-spacing: -.03em; font-variant-numeric: tabular-nums; background: linear-gradient(120deg, var(--text) 30%, var(--accent)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.stat span { display: block; margin-top: 8px; color: var(--muted); font-size: 15px; line-height: 1.35; }
+
+/* ---------- Тёмный блок Цивиса ---------- */
+.civis-band { position: relative; overflow: hidden; padding: 84px 0; background: #0B0B0F; color: #F5F5F7; }
+.civis-band::before { content: ''; position: absolute; inset: -40% -10% auto auto; width: 70%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(closest-side, rgba(47, 140, 255, .35), transparent 70%); filter: blur(30px); animation: glow-drift 16s ease-in-out infinite alternate; pointer-events: none; }
+.civis-band-in { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; }
+.civis-band .eyebrow { color: #9CC8FF; }
+.civis-band h2 { font-size: 44px; line-height: 1.08; letter-spacing: -.03em; font-weight: 700; margin-top: 8px; }
+.civis-band .lead { margin-top: 16px; color: #A1A1A6; font-size: 19px; line-height: 1.45; max-width: 30em; }
+.civis-band-btn { margin-top: 28px; background: #fff; color: #0B0B0F; }
+.civis-band-btn:hover { background: #E8E8ED; }
+.civis-demo { background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .1); border-radius: 24px; padding: 18px; display: flex; flex-direction: column; gap: 12px; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+.civis-demo-head { display: flex; align-items: center; gap: 10px; font-size: 15px; }
+.civis-demo-u, .civis-demo-b { max-width: 86%; padding: 10px 14px; border-radius: 18px; font-size: 15px; line-height: 1.45; }
+.civis-demo-u { align-self: flex-end; background: #0071E3; color: #fff; border-bottom-right-radius: 6px; }
+.civis-demo-b { align-self: flex-start; background: rgba(255, 255, 255, .1); border-bottom-left-radius: 6px; }
+.civis-demo-ref { display: inline-block; margin-top: 6px; padding: 2px 8px; border-radius: 999px; background: rgba(47, 140, 255, .2); color: #9CC8FF; font-size: 13px; }
+.civis-band .civis-demo > * { animation: rise .6s var(--ease) backwards; }
+.civis-band .civis-demo-u { animation-delay: .15s; }
+.civis-band .civis-demo-b { animation-delay: .5s; }
+
+/* ---------- Цветные карточки и шаги ---------- */
+.cards .ico { width: 48px; height: 48px; padding: 11px; border-radius: 14px; margin-bottom: 10px; transition: transform .35s var(--ease); }
+.cards a[href*="services"] .ico { background: rgba(0, 113, 227, .12); color: #0071E3; }
+.cards a[href*="invoice"] .ico { background: rgba(52, 199, 89, .14); color: #248A3D; }
+.cards a[href*="employment"] .ico { background: rgba(255, 149, 0, .15); color: #C25E00; }
+.cards a[href*="act"] .ico, .cards a[href*="hire"] .ico, .cards a[href*="leave"] .ico { background: rgba(175, 82, 222, .13); color: #8944AB; }
+a.card:hover .ico { transform: scale(1.08) rotate(-4deg); }
+.card .more::after { content: '\00a0→'; display: inline-block; transition: transform .3s var(--ease); }
+a.card:hover .more::after { transform: translateX(4px); }
+.how li { position: relative; }
+.how li::before { background: var(--btn); color: #fff; }
+.how li:not(:last-child)::after { content: ''; position: absolute; top: 17px; left: 46px; right: -20px; height: 2px; border-radius: 1px; background: linear-gradient(90deg, var(--btn), var(--line)); transform-origin: left; transform: scaleX(0); transition: transform .9s var(--ease) .25s; }
+.how li.in::after, .how li:not([data-reveal])::after { transform: scaleX(1); }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .hero-chip { background: rgba(44, 44, 46, .78); border-color: rgba(255, 255, 255, .1); }
+  :root:not([data-theme="light"]) .civis-band { background: #111114; }
+  :root:not([data-theme="light"]) .cards a[href*="invoice"] .ico { color: #30D158; }
+  :root:not([data-theme="light"]) .cards a[href*="employment"] .ico { color: #FF9F0A; }
+  :root:not([data-theme="light"]) .cards a[href*="services"] .ico { color: #2997FF; }
+}
+:root[data-theme="dark"] .hero-chip { background: rgba(44, 44, 46, .78); border-color: rgba(255, 255, 255, .1); }
+:root[data-theme="dark"] .civis-band { background: #111114; }
+:root[data-theme="dark"] .cards a[href*="invoice"] .ico { color: #30D158; }
+:root[data-theme="dark"] .cards a[href*="employment"] .ico { color: #FF9F0A; }
+:root[data-theme="dark"] .cards a[href*="services"] .ico { color: #2997FF; }
+
+@media (max-width: 1000px) {
+  .civis-band-in { grid-template-columns: 1fr; gap: 36px; }
+}
+@media (max-width: 768px) {
+  .stats { padding: 0 0 28px; }
+  .stats-in { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px 18px; padding-top: 26px; }
+  .stat b { font-size: 36px; }
+  .stat span { font-size: 14px; }
+  .hero-chip { font-size: 12px; padding: 7px 11px 7px 8px; gap: 6px; }
+  .hero-chip svg { width: 15px; height: 15px; }
+  .hero-chip.c1 { left: 0; }
+  .hero-chip.c3 { left: 2%; }
+  .civis-band { padding: 56px 0; }
+  .civis-band h2 { font-size: 32px; }
+  .civis-band .lead { font-size: 17px; }
+  .how li:not(:last-child)::after { display: none; }
+}

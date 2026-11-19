@@ -113,11 +113,39 @@
     cload.catch(function () { cload = null; });
     return cload;
   }
+  // Кнопка в тёмном блоке на главной открывает того же Цивиса.
+  document.querySelectorAll('.civis-band-btn').forEach(function (b) {
+    b.addEventListener('click', function () {
+      if (!cfab) return;
+      civisLoad().then(function () { window.Civis.bind(cfab); window.Civis.open(); }).catch(function () {});
+    });
+  });
   if (cfab) {
     cfab.addEventListener('pointerenter', function () { civisLoad().catch(function () {}); });
     cfab.addEventListener('click', function () {
       civisLoad().then(function () { window.Civis.bind(cfab); window.Civis.toggle(); }).catch(function () {});
     });
+  }
+
+  // Счётчики на главной досчитывают до своего числа, когда появляются на экране.
+  var counters = document.querySelectorAll('[data-count]');
+  if (counters.length && 'IntersectionObserver' in window && !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) {
+    var cio = new IntersectionObserver(function (list) {
+      list.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        cio.unobserve(e.target);
+        var n = +e.target.getAttribute('data-count'), t0 = null;
+        var step = function (ts) {
+          if (!t0) t0 = ts;
+          var k = Math.min(1, (ts - t0) / 900), v = 1 - Math.pow(1 - k, 3);
+          e.target.textContent = String(Math.round(n * v));
+          if (k < 1) window.requestAnimationFrame(step);
+        };
+        e.target.textContent = '0';
+        window.requestAnimationFrame(step);
+      });
+    }, { threshold: 0.6 });
+    counters.forEach(function (n) { cio.observe(n); });
   }
 
   /* Оговорка в footer */

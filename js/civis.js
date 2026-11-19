@@ -73,6 +73,9 @@
   };
   var LAW_Q = { leave: { ru: 'основной оплачиваемый ежегодный трудовой отпуск продолжительность 24 календарных дня', kk: 'негізгі жыл сайынғы ақы төленетін еңбек демалысы ұзақтығы күнтізбелік күн' }, quit: { ru: 'расторжение трудового договора по инициативе работника уведомив за один месяц', kk: 'еңбек шартын жұмыскердің бастамасы бойынша бұзу бір ай бұрын хабардар ету' } };
 
+  // Аватарка: лист документа с лицом (вариант D). Моргает, а пока Цивис думает — покачивается.
+  var AVATAR = '<svg class="civis-face" viewBox="6 5.5 28 30" aria-hidden="true"><path d="M12.5 7.5h11l6.5 6.5v18a2.5 2.5 0 0 1-2.5 2.5h-15A2.5 2.5 0 0 1 10 32V10a2.5 2.5 0 0 1 2.5-2.5z" fill="#fff"/><path d="M23.5 7.5V14h6.5z" fill="#9CC8FF"/><g class="civis-eyes"><circle cx="16.3" cy="20.5" r="1.7" fill="#0B1F3A"/><circle cx="23.7" cy="20.5" r="1.7" fill="#0B1F3A"/></g><path d="M16.3 25.6q3.7 3.1 7.4 0" fill="none" stroke="#0B1F3A" stroke-width="1.7" stroke-linecap="round"/><circle cx="14" cy="24.4" r="1.3" fill="#FFB4B4" opacity=".75"/><circle cx="26" cy="24.4" r="1.3" fill="#FFB4B4" opacity=".75"/></svg>';
+
   var state = { open: false, ai: null, msgs: [], index: null, busy: false };
   var box, log, input, sendBtn, chips, modeEl, fab;
 
@@ -82,7 +85,8 @@
     box = el('div', 'civis');
     box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-labelledby', 'civis-title');
     var head = el('div', 'civis-head');
-    var av = el('span', 'civis-av', 'Ц'); av.setAttribute('aria-hidden', 'true');
+    var av = el('span', 'civis-av'); av.setAttribute('aria-hidden', 'true');
+    av.innerHTML = AVATAR;
     var ttl = el('div', 'civis-ttl');
     var h = el('h2', null, tx('title')); h.id = 'civis-title';
     ttl.appendChild(h); ttl.appendChild(el('span', 'civis-sub', tx('sub')));
@@ -135,6 +139,7 @@
 
   // Ответ бота: абзацы текста, ссылки на шаблоны и источники.
   function bot(paras, extra, cls) {
+    if (box) box.classList.remove('is-busy');
     var b = bubble('civis-bot' + (cls ? ' ' + cls : ''));
     paras.forEach(function (p) { if (p) b.appendChild(el('p', null, p)); });
     if (extra && extra.docs) {
@@ -199,7 +204,7 @@
     return best;
   }
 
-  function typing() { var b = bubble('civis-bot civis-typing'); b.setAttribute('aria-label', tx('typing')); b.innerHTML = '<span></span><span></span><span></span>'; scrollEnd(); return b; }
+  function typing() { box.classList.add('is-busy'); var b = bubble('civis-bot civis-typing'); b.setAttribute('aria-label', tx('typing')); b.innerHTML = '<span></span><span></span><span></span>'; scrollEnd(); return b; }
 
   function ask(raw) {
     var q = String(raw || '').trim();
