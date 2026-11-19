@@ -162,7 +162,7 @@
     app.appendChild(flow(rec));
     var tabs = el('div', 'jr-tabs'); tabs.setAttribute('role', 'tablist');
     var panel = el('div', 'jr-panel');
-    [['edit', 'dm.t.edit'], ['ver', 'dm.t.ver'], ['cmp', 'dm.t.cmp'], ['share', 'dm.t.share']].forEach(function (x) {
+    [['edit', 'dm.t.edit'], ['ver', 'dm.t.ver'], ['cmp', 'dm.t.cmp'], ['share', 'dm.t.share'], ['ecp', 'dm.t.ecp']].forEach(function (x) {
       var b = btn('jr-tab', t(x[1]), function () {
         if (tab === 'edit' && dirty && x[0] !== 'edit' && !window.confirm(t('dm.unsaved'))) return;
         if (x[0] !== 'edit') dirty = false;
@@ -176,6 +176,7 @@
     if (tab === 'edit') renderEditor(panel);
     else if (tab === 'ver') renderVersions(panel);
     else if (tab === 'cmp') renderCompare(panel);
+    else if (tab === 'ecp') renderEcp(panel);
     else renderShare(panel);
   }
 
@@ -386,8 +387,12 @@
   }
 
   /* ---------- Ссылка и согласование ---------- */
+  // Свои данные вписывает вторая сторона договора, счёта и акта, а в трудовом договоре — работник.
+  // Приказы и справку оформляет работодатель: там вторая сторона только знакомится и согласует.
+  var FILLABLE = { services: 1, invoice: 1, act: 1, employment: 1 };
   function partyFields(code) {
     var out = [];
+    if (!FILLABLE[code]) return out;
     TPL.DOCS[code].steps.forEach(function (s) { s.fields.forEach(function (fid) { if (/^(cp_|w_)/.test(fid)) out.push(fid); }); });
     return out;
   }
@@ -423,7 +428,7 @@
       var lang = v.lang || rec.lang, data = v.data || {};
       // В ссылке — данные анкеты и правки относительно шаблона; получатель собирает документ и сверяет отпечаток.
       var payload = { t: 'q', v: 1, id: rec.id, n: v.n, code: rec.code, lang: lang, number: rec.number, mode: mode,
-        from: data.ip_name || '', hash: v.hash, at: Date.now(), data: data };
+        from: data.ip_name || '', hash: v.hash, at: Date.now(), vat: v.at, data: data };
       if (v.edited) payload.patch = ST.patch(TPL.build(rec.code, data, lang), v.blocks);
       if (mode === 'fill') payload.fields = fields;
       ST.encode(payload).then(function (code) {
@@ -466,8 +471,8 @@
     var list = el('div', 'sg-list');
     (rec.signs || []).forEach(function (s) {
       var it = el('div', 'sg-item');
-      var im = el('img'); im.src = s.img || window.DocumSign.draw(s.strokes); im.alt = s.name; im.width = 180; im.height = 60;
-      it.appendChild(im);
+      if (s.ecp) it.appendChild(el('span', 'ecp-tag', t('ec.tag')));
+      else { var im = el('img'); im.src = s.img || window.DocumSign.draw(s.strokes); im.alt = s.name; im.width = 180; im.height = 60; it.appendChild(im); }
       var info = el('div');
       info.appendChild(el('b', null, s.name));
       info.appendChild(el('p', 'jr-meta', (s.who === 'self' ? t('sg.me') : t('sg.other')) + ' · ' + fmt(s.at) + ' · ' + f('dm.ver', { n: s.n })));
@@ -503,6 +508,125 @@
       }).catch(function () { flash(impMsg, t('dm.badLink'), true); });
     });
     panel.appendChild(sg);
+  }
+
+  /* ---------- Подписание ЭЦП через NCALayer ---------- */
+  var E = window.DocumEcp;
+  function sha(u8) { return crypto.subtle.digest('SHA-256', u8).then(function (h) { return E.hex(new Uint8Array(h)); }); }
+  function fdate(ms) { return ms ? fmt(ms).slice(0, 10) : '—'; }
+  function pdfOf(v) { return EX.pdfBytes(v.blocks, v.at); }
+  // Подпись CMS → запись журнала: кто подписал, какую версию, результаты проверок.
+  function ecpRecord(cmsB64, who) {
+    var p = E.parse(E.unb64(cmsB64));
+    return Promise.all([E.verify(p), p.content ? sha(p.content) : Promise.resolve('')]).then(function (r) {
+      var res = r[0], ch = r[1];
+      // Какая версия подписана: сравниваем PDF версий с содержимым подписи.
+      var vs = rec.versions.slice().reverse(), i = 0;
+      function next() {
+        if (i >= vs.length) return Promise.resolve(null);
+        var v = vs[i++];
+        return pdfOf(v).then(sha).then(function (h) { return h === ch ? v.n : next(); });
+      }
+      return next().then(function (n) {
+        var inf = p.info, t0 = p.attrs.time || Date.now();
+        return { who: who, at: Date.now(), n: n, cms: cmsB64, contentHash: ch,
+          cn: (inf.subject || {}).cn || '', given: (inf.subject || {}).given || '', iin: inf.iin || '', bin: inf.bin || '', org: (inf.subject || {}).org || '',
+          issuer: (inf.issuer || {}).cn || '', from: inf.notBefore, to: inf.notAfter, time: p.attrs.time || null,
+          alg: E.alg(p.sigAlg).n + ' / ' + E.alg(p.digestAlg).n, digest: res.digest, crypto: res.crypto, gost: res.gost,
+          valid: inf.notBefore && inf.notAfter ? (t0 >= inf.notBefore && t0 <= inf.notAfter) : null };
+      });
+    });
+  }
+  function renderEcp(panel) {
+    var intro = el('section', 'sh-box ecp-intro');
+    intro.appendChild(el('h2', 'panel-title', t('ec.title')));
+    intro.appendChild(el('p', 'lead-s', t('ec.lead')));
+    var stRow = el('div', 'ecp-status'), dot = el('span', 'ecp-dot'), stTx = el('span', null, t('ec.unknown'));
+    stRow.appendChild(dot); stRow.appendChild(stTx);
+    var chk = btn('btn btn-ghost', t('ec.check'), function () {
+      stTx.textContent = t('ec.checking'); dot.className = 'ecp-dot';
+      E.check().then(function (r) { dot.className = 'ecp-dot is-ok'; stTx.textContent = f('ec.ok', { v: r.version || '?' }); })
+        .catch(function () { dot.className = 'ecp-dot is-bad'; stTx.textContent = t('ec.none'); });
+    });
+    stRow.appendChild(chk);
+    intro.appendChild(stRow);
+    var inst = el('p', 'jr-note'); inst.appendChild(document.createTextNode(t('ec.install') + ' '));
+    var a = el('a', null, 'ncl.pki.gov.kz'); a.href = 'https://ncl.pki.gov.kz/'; a.target = '_blank'; a.rel = 'noopener'; inst.appendChild(a);
+    intro.appendChild(inst);
+    var v = last(rec), msg = el('p', 'msg'); msg.setAttribute('role', 'status');
+    var go = btn('btn btn-primary ecp-sign', f('ec.sign', { n: v.n }), function () {
+      go.disabled = true; flash(msg, t('ec.prep'));
+      pdfOf(v).then(function (pdf) {
+        flash(msg, t('ec.confirm'));
+        return E.sign(E.b64(pdf));
+      }).then(function (cms) { return ecpRecord(cms, 'self'); }).then(function (r) {
+        rec.ecp = rec.ecp || []; rec.ecp.push(r); rec.status = 'signed';
+        return ST.put(rec).then(function () { renderDoc(); });
+      }).catch(function (e) {
+        go.disabled = false;
+        var code = e && e.code;
+        flash(msg, code === 'noLayer' ? t('ec.none') : code === 'cancel' ? t('ec.cancel') : code === 'timeout' ? t('ec.timeout') : f('ec.err', { m: (e && e.message) || '' }), true);
+      });
+    });
+    intro.appendChild(go); intro.appendChild(msg);
+    panel.appendChild(intro);
+
+    var list = el('section', 'sh-box');
+    list.appendChild(el('h2', 'panel-title', t('ec.list')));
+    (rec.ecp || []).forEach(function (r, i) {
+      var card = el('article', 'ecp-card');
+      var top = el('div', 'ecp-top');
+      var av = el('span', 'ecp-av', (r.cn || '?').trim().split(/\s+/).map(function (w) { return w[0]; }).slice(0, 2).join(''));
+      top.appendChild(av);
+      var nm = el('div');
+      nm.appendChild(el('b', null, [r.cn, r.given].filter(Boolean).join(' ')));
+      nm.appendChild(el('p', 'jr-meta', (r.who === 'self' ? t('sg.me') : t('sg.other')) + (r.org ? ' · ' + r.org : '')));
+      top.appendChild(nm);
+      top.appendChild(el('span', 'jr-badge ' + (r.n && r.digest !== 'fail' && r.crypto !== 'fail' ? 'jr-signed' : 'jr-sent'), r.n ? f('dm.ver', { n: r.n }) : t('ec.noVer')));
+      card.appendChild(top);
+      var dl = el('dl', 'ecp-dl');
+      var row = function (k, val) { if (!val) return; dl.appendChild(el('dt', null, t(k))); dl.appendChild(el('dd', null, val)); };
+      row('ec.iin', r.iin); row('ec.bin', r.bin); row('ec.issuer', r.issuer);
+      row('ec.valid', fdate(r.from) + ' — ' + fdate(r.to)); row('ec.time', r.time ? fmt(r.time) : ''); row('ec.alg', r.alg);
+      card.appendChild(dl);
+      var checks = el('ul', 'ecp-checks');
+      var ck = function (state, text) { var li = el('li', 'is-' + state); li.appendChild(el('span', null, text)); checks.appendChild(li); };
+      ck(r.n ? 'ok' : 'fail', r.n ? f('ec.docOk', { n: r.n }) : t('ec.docBad'));
+      ck(r.digest === 'ok' ? 'ok' : r.digest === 'fail' ? 'fail' : 'skip', r.digest === 'ok' ? t('ec.digOk') : r.digest === 'fail' ? t('ec.digBad') : t('ec.digSkip'));
+      ck(r.crypto === 'ok' ? 'ok' : r.crypto === 'fail' ? 'fail' : 'skip', r.crypto === 'ok' ? t('ec.cryOk') : r.crypto === 'fail' ? t('ec.cryBad') : t('ec.crySkip'));
+      ck(r.valid === true ? 'ok' : r.valid === false ? 'fail' : 'skip', r.valid === true ? t('ec.certOk') : r.valid === false ? t('ec.certBad') : t('ec.certSkip'));
+      card.appendChild(checks);
+      var acts = el('div', 'sh-row');
+      acts.appendChild(btn('btn btn-ghost', t('ec.dlCms'), function () {
+        EX.saveBlob(new Blob([E.unb64(r.cms)], { type: 'application/pkcs7-signature' }), fileName(rec) + '-' + (i + 1) + '.cms');
+      }));
+      if (r.n) acts.appendChild(btn('btn btn-ghost', t('ec.dlPdf'), function () {
+        pdfOf(rec.versions[r.n - 1]).then(function (pdf) { EX.saveBlob(new Blob([pdf], { type: 'application/pdf' }), fileName(rec) + '.pdf'); });
+      }));
+      card.appendChild(acts);
+      list.appendChild(card);
+    });
+    if (!(rec.ecp || []).length) list.appendChild(el('p', 'jr-note', t('ec.empty')));
+
+    var file = el('input'); file.type = 'file'; file.accept = '.cms,.p7s,.sig,application/pkcs7-signature'; file.hidden = true;
+    var impMsg = el('p', 'msg');
+    var imp = btn('btn btn-ghost', t('ec.import'), function () { file.click(); });
+    file.addEventListener('change', function () {
+      var fl = file.files[0]; if (!fl) return;
+      fl.arrayBuffer().then(function (buf) {
+        var u8 = new Uint8Array(buf), txt = new TextDecoder().decode(u8.subarray(0, 20));
+        var b64 = /^[A-Za-z0-9+\/=\s-]+$/.test(txt) && u8[0] !== 0x30 ? new TextDecoder().decode(u8).replace(/-----[^-]+-----/g, '') : E.b64(u8);
+        return ecpRecord(b64.replace(/\s+/g, ''), 'other');
+      }).then(function (r) {
+        rec.ecp = rec.ecp || []; rec.ecp.push(r);
+        return ST.put(rec).then(renderDoc);
+      }).catch(function () { flash(impMsg, t('ec.badFile'), true); });
+      file.value = '';
+    });
+    list.appendChild(el('p', 'jr-note', t('ec.importNote')));
+    list.appendChild(imp); list.appendChild(file); list.appendChild(impMsg);
+    panel.appendChild(list);
+    panel.appendChild(el('p', 'sign-legal', t('ec.legal')));
   }
 
   if (id) {

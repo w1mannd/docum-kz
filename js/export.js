@@ -190,7 +190,7 @@
   }
 
   /* ---------- .pdf ---------- */
-  function toPdf(blocks) {
+  function toPdf(blocks, at) {
     var content = [];
     blocks.forEach(function (b) {
       switch (b.k) {
@@ -247,7 +247,8 @@
     return {
       pageSize: 'A4', pageMargins: [56.7, 56.7, 56.7, 56.7],
       defaultStyle: { font: 'Tinos', fontSize: 12 },
-      info: { title: 'Документ', creator: 'docum.kz' },
+      // Для подписи ЭЦП дата файла фиксируется датой версии: тогда у обеих сторон получается один и тот же PDF байт в байт.
+      info: at ? { title: 'Документ', creator: 'docum.kz', producer: 'docum.kz', creationDate: new Date(at), modDate: new Date(at) } : { title: 'Документ', creator: 'docum.kz' },
       content: content
     };
   }
@@ -303,5 +304,14 @@
     }).then(function (blob) { saveBlob(blob, name + '.docx'); });
   }
 
-  root.DocumExport = { toHTML: toHTML, downloadDocx: downloadDocx, downloadPdf: downloadPdf, downloadRedline: downloadRedline };
+  // Байты PDF версии для подписи ЭЦП (одинаковые при каждой сборке).
+  function pdfBytes(blocks, at) {
+    return preparePdf().then(function () {
+      return new Promise(function (ok) {
+        root.pdfMake.createPdf(toPdf(blocks, at)).getBuffer(function (buf) { ok(new Uint8Array(buf)); });
+      });
+    });
+  }
+
+  root.DocumExport = { toHTML: toHTML, downloadDocx: downloadDocx, downloadPdf: downloadPdf, downloadRedline: downloadRedline, pdfBytes: pdfBytes, saveBlob: saveBlob };
 })(window);

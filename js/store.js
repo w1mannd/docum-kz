@@ -162,7 +162,7 @@
           r.versions.push({ n: n, at: p.at, blocks: blocks, data: p.data || (prev && prev.data) || {}, lang: p.lang, hash: h, note: '', byOther: p.mode === 'fill' });
         }
         r.signs = r.signs || [];
-        if (!r.signs.some(function (s) { return s.at === p.at && s.name === p.name; })) r.signs.push({ who: 'other', name: p.name, strokes: p.strokes, at: p.at, n: n, hash: h, ok: ok });
+        if (!r.signs.some(function (s) { return s.at === p.at && s.name === p.name; })) r.signs.push({ who: 'other', name: p.name, strokes: p.strokes, ecp: !!p.ecp, at: p.at, n: n, hash: h, ok: ok });
         r.status = 'signed';
         return api.put(r);
       });

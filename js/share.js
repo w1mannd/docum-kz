@@ -116,6 +116,53 @@
       });
     });
     sg.appendChild(msg);
+
+    // Подпись ЭЦП второй стороной: тот же PDF, что у отправителя (дата файла — дата версии).
+    var E = window.DocumEcp, ecpBox = el('div', 'ecp-share');
+    ecpBox.appendChild(el('h3', 'sh-step', t('ec.shareTitle')));
+    ecpBox.appendChild(el('p', 'jr-note', t('ec.shareLead')));
+    var em = el('p', 'msg');
+    var eb = btn('btn btn-primary', t('ec.signShare'), function () {
+      if (p.mode === 'fill') {
+        var bad = p.fields.filter(function (id) { var def = TPL.FIELDS[id]; if (!def || def.type === 'check') return false; var r = L.checkField(def, id, data[id], data, p.code); return r && r.type === 'error'; });
+        if (bad.length) { em.textContent = t('sp.fix'); em.className = 'msg msg-error'; return; }
+      }
+      var at = p.mode === 'fill' ? Date.now() : (p.vat || p.at), cmsB64 = null;
+      em.className = 'msg'; em.textContent = t('ec.prep');
+      eb.disabled = true;
+      EX.pdfBytes(blocks, at).then(function (pdf) {
+        em.textContent = t('ec.confirm');
+        return E.sign(E.b64(pdf));
+      }).then(function (cms) {
+        cmsB64 = cms;
+        var info = E.parse(E.unb64(cms)).info, subj = info.subject || {};
+        EX.saveBlob(new Blob([E.unb64(cms)], { type: 'application/pkcs7-signature' }), 'docum-' + p.code + '-' + (p.number || 'doc') + '-ecp.cms');
+        return ST.hash(ST.text(blocks)).then(function (h) {
+          var res = { t: 'r', v: 1, id: p.id, n: p.n, code: p.code, lang: p.lang, number: p.number, mode: p.mode, name: [subj.cn, subj.given].filter(Boolean).join(' '), ecp: true, at: at, hash: h };
+          if (p.mode === 'fill') res.data = data;
+          return ST.encode(res);
+        });
+      }).then(function (code) {
+        eb.disabled = false;
+        var link = location.origin + location.pathname + '#' + code;
+        out.textContent = '';
+        out.appendChild(el('h3', 'sp-ready', t('ec.shareDone')));
+        out.appendChild(el('p', 'lead-s', t('ec.shareSend')));
+        var field = el('textarea', 'input sh-link'); field.readOnly = true; field.rows = 3; field.value = link;
+        out.appendChild(field);
+        var row = el('div', 'sh-row');
+        row.appendChild(btn('btn btn-primary', t('dm.copy'), function (e2) { var b2 = e2.currentTarget; (navigator.clipboard ? navigator.clipboard.writeText(link) : Promise.reject()).then(function () { b2.textContent = t('dm.copied'); }, function () { field.select(); document.execCommand('copy'); b2.textContent = t('dm.copied'); }); }));
+        row.appendChild(btn('btn btn-ghost', t('ec.dlCms'), function () { EX.saveBlob(new Blob([E.unb64(cmsB64)], { type: 'application/pkcs7-signature' }), 'docum-' + p.code + '-' + (p.number || 'doc') + '-ecp.cms'); }));
+        out.appendChild(row);
+        em.textContent = '';
+      }).catch(function (e) {
+        eb.disabled = false; em.className = 'msg msg-error';
+        var c = e && e.code;
+        em.textContent = c === 'noLayer' ? t('ec.none') : c === 'cancel' ? t('ec.cancel') : c === 'timeout' ? t('ec.timeout') : t('ec.err').replace('{m}', (e && e.message) || '');
+      });
+    });
+    ecpBox.appendChild(eb); ecpBox.appendChild(em);
+    sg.insertBefore(ecpBox, sg.querySelector('.sign'));
     sg.appendChild(out);
     wrap.appendChild(doc); wrap.appendChild(side);
     app.appendChild(wrap);
