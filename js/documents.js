@@ -564,7 +564,7 @@
   // Подписывается всегда чистый PDF версии (pdfOf), штамп в подписанное содержимое не входит.
   function stamped(v) {
     var out = clone(v.blocks);
-    (rec.ecp || []).forEach(function (r) { if (r.n === v.n) out.push(E.stamp(r, v.lang || rec.lang)); });
+    (rec.ecp || []).forEach(function (r) { if (r.n === v.n) out.push(r.stamp || E.stamp(r, v.lang || rec.lang)); });
     return out;
   }
   // Подпись → запись журнала: кто подписал, какую версию, результаты проверок.
@@ -705,7 +705,8 @@
         cmsBtn.appendChild(el('small', null, t('ec.dlCmsSub')));
         acts.appendChild(cmsBtn);
       }
-      if (v && !r.stamp) {
+      // PAdES — подпись уже в PDF, отдельный «PDF со штампом» не нужен. Для .cms PDF со штампом — единственный PDF для печати.
+      if (v && r.kind !== 'pades') {
         var pdfBtn = btn('btn btn-ghost', '', function () {
           pdfBtn.disabled = true;
           EX.pdfBytes(stamped(v), v.at).then(function (pdf) {
@@ -715,9 +716,11 @@
         pdfBtn.appendChild(el('b', null, t('ec.dlPdf')));
         pdfBtn.appendChild(el('small', null, t('ec.dlPdfSub')));
         acts.appendChild(pdfBtn);
+      }
+      if (v) {
         var docBtn = btn('btn btn-ghost', '', function () { EX.downloadDocx(stamped(v), base + '-stamp'); });
         docBtn.appendChild(el('b', null, t('ec.dlDocx')));
-        docBtn.appendChild(el('small', null, t('ec.dlPdfSub')));
+        docBtn.appendChild(el('small', null, t('ec.dlDocxSub')));
         acts.appendChild(docBtn);
       }
       card.appendChild(acts);

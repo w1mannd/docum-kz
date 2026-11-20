@@ -834,7 +834,7 @@ a.card:hover .more::after { transform: translateX(4px); }
 
 /* ЭЦП: скачивание подписанного документа и превью штампа */
 .ecp-stamp-prev { margin: 14px 0 0; padding: 4px 14px; border-radius: 12px; font-size: 14px; }
-.ecp-dls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+.ecp-dls { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 14px; }
 .ecp-dls .btn { flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; min-height: 58px; padding: 10px 14px; text-align: left; white-space: normal; line-height: 1.25; }
 .ecp-dls .btn b { font-size: 14.5px; font-weight: 600; }
 .ecp-dls .btn small { font-size: 12px; font-weight: 400; opacity: .78; }

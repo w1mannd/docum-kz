@@ -1,6 +1,7 @@
 /* docum.kz — тексты интерфейса на казахском и русском. Чего нет в kk, берётся из ru. */
 window.I18N = {
   kk: {
+    "ec.dlDocxSub": "редакциялауға болатын көшірме, қолтаңбасыз",
     "st.footPades": "ЭЦҚ осы PDF файлына енгізілген (PAdES) · docum.kz",
     "ec.dlPadesStampSub": "ЭЦҚ мөрі мен қолтаңбасы бір файлда",
     "ec.dlPadesStamp": "Қол қойылған PDF",
@@ -646,6 +647,7 @@ window.I18N = {
     "w.startBefore": "Басталу күні шарт күнінен ерте. Қате жоқ па, тексеріңіз."
   },
   ru: {
+    "ec.dlDocxSub": "копия для правки, без подписи",
     "st.footPades": "ЭЦП встроена в этот PDF (PAdES) · docum.kz",
     "ec.dlPadesStampSub": "штамп и ЭЦП в одном файле",
     "ec.dlPadesStamp": "Подписанный PDF",
