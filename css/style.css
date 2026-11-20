@@ -732,13 +732,13 @@ a.card:hover .more::after { transform: translateX(4px); }
 .jr-top h1 { font-size: 44px; line-height: 1.08; letter-spacing: -.03em; font-weight: 700; }
 .jr-top .lead { margin-top: 10px; color: var(--muted); max-width: 34em; }
 .jr-new::before { content: '+'; font-size: 20px; margin-right: 6px; line-height: 1; }
-.jr-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+.jr-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
 .jr-stat { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 14px 16px; border: 1.5px solid transparent; border-radius: 16px; background: var(--bg2); color: var(--text); font: inherit; cursor: pointer; text-align: left; transition: border-color .2s ease, transform .2s var(--ease); }
 .jr-stat:hover { transform: translateY(-2px); }
 .jr-stat b { font-size: 28px; line-height: 1.1; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
 .jr-stat span { color: var(--muted); font-size: 13px; }
 .jr-stat[aria-pressed="true"] { border-color: var(--accent); }
-.jr-stat-final b { color: var(--accent); } .jr-stat-sent b { color: #C25E00; } .jr-stat-signed b { color: #248A3D; }
+.jr-stat-draft b { color: var(--muted); } .jr-stat-final b { color: var(--accent); } .jr-stat-sent b { color: #C25E00; } .jr-stat-signed b { color: #248A3D; }
 .jr-search { position: relative; margin-bottom: 14px; }
 .jr-search svg { position: absolute; left: 14px; top: 50%; width: 18px; height: 18px; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
 .jr-search .input { padding-left: 42px; }
@@ -799,8 +799,9 @@ a.card:hover .more::after { transform: translateX(4px); }
   .jr-top h1 { font-size: 34px; }
   .jr-new { width: 100%; }
   .jr-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .jr-stats > :first-child { grid-column: 1 / -1; }
   .jr-item { grid-template-columns: minmax(0, 1fr) auto; }
-  .jr-item .jr-flow { grid-column: 1; }
+  .jr-item .jr-flow, .jr-item .jr-draft-bar { grid-column: 1; }
   .jr-item .jr-del { grid-column: 2; grid-row: 2; justify-self: end; }
   .sh-modes { grid-template-columns: 1fr; }
 }
@@ -841,3 +842,17 @@ a.card:hover .more::after { transform: translateX(4px); }
 .ecp-card.is-new { animation: ecpNew 1.6s var(--ease); }
 @keyframes ecpNew { 0% { box-shadow: 0 0 0 0 rgba(52, 199, 89, .55); } 60% { box-shadow: 0 0 0 8px rgba(52, 199, 89, 0); } }
 @media (max-width: 768px) { .ecp-dls { grid-template-columns: 1fr; } .ecp-stamp-prev { padding: 0; border: 0; background: transparent; } }
+
+/* Незаконченные документы в «Моих документах» */
+.jr-drafts:empty { display: none; }
+.jr-drafts { display: grid; gap: 10px; margin-bottom: 10px; }
+.jr-sub { margin: 14px 0 0; font-size: 15px; font-weight: 600; color: var(--muted); letter-spacing: .01em; }
+.jr-drafts > .jr-sub:first-child { margin-top: 4px; }
+.jr-drafts .jr-note { margin: -4px 0 2px; }
+.jr-draft { background: rgba(142, 142, 147, .16); color: var(--muted); }
+.jr-item-draft { border: 1px dashed var(--line); }
+.jr-draft-bar { display: block; width: 92px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.jr-draft-bar i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
+.draft-auto { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 13.5px; color: var(--muted); }
+.draft-auto::before { content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 8px; border-radius: 50%; background: var(--line); vertical-align: 1px; transition: background-color .3s ease; }
+.draft-auto.is-saved::before { background: #34C759; }

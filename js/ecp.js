@@ -45,13 +45,14 @@
   function clean(s) {
     return s.replace(/-----(BEGIN|END)[^-]*-----/g, '').replace(/[\s"]/g, '').replace(/-/g, '+').replace(/_/g, '/');
   }
-  function sign(base64) {
+  // detached: подпись без вложенного содержимого — для PAdES (подпись внутри PDF).
+  function sign(base64, detached) {
     var basics = {
       module: 'kz.gov.pki.knca.basics', method: 'sign',
       args: {
         allowedStorages: ['PKCS12', 'AKKaztokenStore', 'AKKZIDCardStore', 'AKEToken72KStore', 'AKEToken5110Store', 'AKJaCartaStore', 'AKAKEYStore'],
         format: 'cms', data: base64,
-        signingParams: { decode: true, encapsulate: true, digested: false },
+        signingParams: { decode: true, encapsulate: !detached, digested: false },
         signerParams: { extKeyUsageOids: ['1.3.6.1.5.5.7.3.4'], chain: [] },
         locale: (root.getLang && root.getLang() === 'kk') ? 'kk' : 'ru'
       }
@@ -63,7 +64,7 @@
       if (d.status === true) throw { code: 'cancel' };
       // Старые версии NCALayer без модуля basics: тот же результат через commonUtils.
       if (/module|bundle|not found|не найден/i.test(String(d.message || d.code || ''))) {
-        return call({ module: 'kz.gov.pki.knca.commonUtils', method: 'createCAdESFromBase64', args: ['PKCS12', 'SIGNATURE', base64, true] }).then(function (r) {
+        return call({ module: 'kz.gov.pki.knca.commonUtils', method: 'createCAdESFromBase64', args: ['PKCS12', 'SIGNATURE', base64, !detached] }).then(function (r) {
           if (String(r.code) === '200' && r.responseObject) return pick(r.responseObject);
           throw { code: 'layer', message: r.message };
         });

@@ -40,6 +40,10 @@
     steps.forEach(function (s) { var li = el('li', s[1] ? 'is-on' : ''); li.appendChild(el('span', null, t('dm.flow.' + s[0]))); w.appendChild(li); });
     return w;
   }
+  function draftTitle(d) {
+    var num = d.data && d.data.number != null ? String(d.data.number).trim() : '';
+    return t('d.' + d.code) + (num ? ' № ' + num : '');
+  }
   function renderList() {
     app.textContent = '';
     var head = el('div', 'jr-top');
@@ -58,6 +62,7 @@
     var search = el('input', 'input'); search.type = 'search'; search.placeholder = t('dm.search'); search.setAttribute('aria-label', t('dm.search'));
     sw.appendChild(search);
     app.appendChild(sw);
+    var drafts = el('section', 'jr-drafts'); drafts.id = 'drafts'; app.appendChild(drafts);
     var list = el('div', 'jr-list'); app.appendChild(list);
     var empty = el('div', 'jr-empty'); app.appendChild(empty);
 
@@ -75,8 +80,9 @@
     var all = [];
     function drawStats() {
       stats.textContent = '';
-      [['all', all.length], ['final', 0], ['sent', 0], ['signed', 0]].forEach(function (k) {
-        var n = k[0] === 'all' ? k[1] : all.filter(function (r) { return r.status === k[0]; }).length;
+      var nd = window.DocumDrafts ? window.DocumDrafts.list().filter(function (d) { return TPL.DOCS[d.code]; }).length : 0;
+      [['all', all.length + nd], ['draft', nd], ['final', 0], ['sent', 0], ['signed', 0]].forEach(function (k) {
+        var n = k[0] === 'all' || k[0] === 'draft' ? k[1] : all.filter(function (r) { return r.status === k[0]; }).length;
         var b = btn('jr-stat jr-stat-' + k[0], null, function () { status = k[0]; drawStats(); draw(); });
         b.setAttribute('aria-pressed', String(status === k[0]));
         b.appendChild(el('b', null, String(n)));
@@ -84,8 +90,42 @@
         stats.appendChild(b);
       });
     }
+    // Незаконченные документы (черновики конструктора) — здесь же, над готовыми.
+    function drawDrafts() {
+      var DR = window.DocumDrafts, q = search.value.trim().toLowerCase();
+      drafts.textContent = '';
+      if (!DR) return;
+      var ds = DR.list().filter(function (d) { return TPL.DOCS[d.code] && draftTitle(d).toLowerCase().indexOf(q) >= 0; });
+      if (!ds.length || (status !== 'all' && status !== 'draft')) return;
+      drafts.appendChild(el('h2', 'jr-sub', t('dm.drafts') + ' · ' + ds.length));
+      drafts.appendChild(el('p', 'jr-note', t('dm.draftsNote')));
+      var box = el('div', 'jr-list');
+      ds.forEach(function (d, i) {
+        var card = el('article', 'jr-item jr-item-draft');
+        card.style.setProperty('--i', i);
+        var a = el('a', 'jr-main'); a.href = 'constructor.html?draft=' + encodeURIComponent(d.id);
+        a.appendChild(icon(d.code));
+        var tx = el('span', 'jr-txt');
+        tx.appendChild(el('span', 'jr-title', draftTitle(d)));
+        var steps = TPL.DOCS[d.code].steps.length + 1;
+        tx.appendChild(el('span', 'jr-meta', f('dm.d.step', { n: d.step + 1, m: steps }) + ' · ' + f('dm.c.upd', { d: fmt(d.savedAt) })));
+        a.appendChild(tx);
+        card.appendChild(a);
+        card.appendChild(el('span', 'jr-badge jr-draft', t('dm.s.draft')));
+        var bar = el('span', 'jr-draft-bar'); var fill = el('i'); fill.style.width = Math.round((d.step + 1) / steps * 100) + '%'; bar.appendChild(fill);
+        card.appendChild(bar);
+        var del = btn('jr-del', null, function () { if (window.confirm(t('b.draftRemoveAsk'))) { DR.remove(d.id); drawStats(); draw(); } });
+        del.setAttribute('aria-label', t('dm.del') + ': ' + draftTitle(d));
+        del.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l.8 12.2a1 1 0 0 0 1 .8h6.4a1 1 0 0 0 1-.8L17 7"/></svg>';
+        card.appendChild(del);
+        box.appendChild(card);
+      });
+      drafts.appendChild(box);
+      if (all.length && status === 'all') drafts.appendChild(el('h2', 'jr-sub', t('dm.ready') + ' · ' + all.length));
+    }
     function draw() {
       var q = search.value.trim().toLowerCase();
+      drawDrafts();
       list.textContent = '';
       all.filter(function (r) {
         return (status === 'all' || r.status === status) && titleOf(r).toLowerCase().indexOf(q) >= 0;
@@ -108,7 +148,7 @@
         list.appendChild(card);
       });
       empty.textContent = '';
-      if (!all.length) {
+      if (!all.length && !drafts.childNodes.length && status === 'all' && !q) {
         var face = el('span', 'jr-empty-face');
         face.innerHTML = '<svg viewBox="6 5.5 28 30" aria-hidden="true"><path d="M12.5 7.5h11l6.5 6.5v18a2.5 2.5 0 0 1-2.5 2.5h-15A2.5 2.5 0 0 1 10 32V10a2.5 2.5 0 0 1 2.5-2.5z" fill="#fff"/><path d="M23.5 7.5V14h6.5z" fill="#9CC8FF"/><circle cx="16.3" cy="20.5" r="1.7" fill="#0B1F3A"/><circle cx="23.7" cy="20.5" r="1.7" fill="#0B1F3A"/><path d="M16.8 26.4q3.2-2 6.4 0" fill="none" stroke="#0B1F3A" stroke-width="1.7" stroke-linecap="round"/></svg>';
         empty.appendChild(face);
@@ -139,7 +179,12 @@
       }).catch(function () { flash(msg, t('dm.badFile'), true); });
       file.value = '';
     });
-    function load() { ST.all().then(function (rows) { all = rows; drawStats(); draw(); }); }
+    function load() {
+      ST.all().then(function (rows) {
+        all = rows; drawStats(); draw();
+        if (location.hash === '#drafts' && drafts.childNodes.length) drafts.scrollIntoView({ block: 'start' });
+      });
+    }
     load();
   }
 
@@ -522,21 +567,30 @@
     (rec.ecp || []).forEach(function (r) { if (r.n === v.n) out.push(E.stamp(r, v.lang || rec.lang)); });
     return out;
   }
-  // Подпись CMS → запись журнала: кто подписал, какую версию, результаты проверок.
-  function ecpRecord(cmsB64, who) {
+  // Подпись → запись журнала: кто подписал, какую версию, результаты проверок.
+  // kind 'cms' — CMS с PDF внутри (.cms); 'pades' — отсоединённая CMS внутри PDF, content — подписанные байты PDF.
+  var PA = window.DocumPades;
+  function padesOf(v) { return pdfOf(v).then(function (pdf) { return PA.prepare(pdf, v.at); }); }
+  function ecpRecord(cmsB64, who, opt) {
+    opt = opt || {};
+    var kind = opt.kind || 'cms';
     var p = E.parse(E.unb64(cmsB64));
+    if (!p.content && opt.content) p.content = opt.content;
     return Promise.all([E.verify(p), p.content ? sha(p.content) : Promise.resolve('')]).then(function (r) {
-      var res = r[0], ch = r[1];
-      // Какая версия подписана: сравниваем PDF версий с содержимым подписи.
+      var res = r[0], ch = r[1], plain = '';
+      // Какая версия подписана: собираем подписываемые байты каждой версии и сравниваем.
       var vs = rec.versions.slice().reverse(), i = 0;
       function next() {
         if (i >= vs.length) return Promise.resolve(null);
         var v = vs[i++];
-        return pdfOf(v).then(sha).then(function (h) { return h === ch ? v.n : next(); });
+        return pdfOf(v).then(function (pdf) {
+          var data = kind === 'pades' ? PA.prepare(pdf, v.at).toSign : pdf;
+          return Promise.all([sha(data), sha(pdf)]);
+        }).then(function (h) { if (h[0] === ch) { plain = h[1]; return v.n; } return next(); });
       }
       return next().then(function (n) {
         var inf = p.info, t0 = p.attrs.time || Date.now();
-        return { who: who, at: Date.now(), n: n, cms: cmsB64, contentHash: ch, serial: inf.serial || '',
+        return { who: who, kind: kind, at: Date.now(), n: n, cms: cmsB64, contentHash: plain || ch, serial: inf.serial || '',
           cn: (inf.subject || {}).cn || '', given: (inf.subject || {}).given || '', iin: inf.iin || '', bin: inf.bin || '', org: (inf.subject || {}).org || '',
           issuer: (inf.issuer || {}).cn || '', from: inf.notBefore, to: inf.notAfter, time: p.attrs.time || null,
           alg: E.alg(p.sigAlg).n + ' / ' + E.alg(p.digestAlg).n, digest: res.digest, crypto: res.crypto, gost: res.gost,
@@ -564,10 +618,13 @@
     var v = last(rec), msg = el('p', 'msg'); msg.setAttribute('role', 'status');
     var go = btn('btn btn-primary ecp-sign', f('ec.sign', { n: v.n }), function () {
       go.disabled = true; flash(msg, t('ec.prep'));
-      pdfOf(v).then(function (pdf) {
+      // PAdES: NCALayer подписывает байты PDF с подготовленным полем подписи, подпись встаёт внутрь файла.
+      var prep = null;
+      padesOf(v).then(function (pp) {
+        prep = pp;
         flash(msg, t('ec.confirm'));
-        return E.sign(E.b64(pdf));
-      }).then(function (cms) { return ecpRecord(cms, 'self'); }).then(function (r) {
+        return E.sign(E.b64(prep.toSign), true);
+      }).then(function (cms) { return ecpRecord(cms, 'self', { kind: 'pades', content: prep.toSign }); }).then(function (r) {
         rec.ecp = rec.ecp || []; rec.ecp.push(r); rec.status = 'signed';
         justSigned = rec.ecp.length - 1;
         return ST.put(rec).then(function () { renderDoc(); });
@@ -589,7 +646,7 @@
       top.appendChild(av);
       var nm = el('div');
       nm.appendChild(el('b', null, [r.cn, r.given].filter(Boolean).join(' ')));
-      nm.appendChild(el('p', 'jr-meta', (r.who === 'self' ? t('sg.me') : t('sg.other')) + (r.org ? ' · ' + r.org : '')));
+      nm.appendChild(el('p', 'jr-meta', (r.who === 'self' ? t('sg.me') : t('sg.other')) + ' · ' + (r.kind === 'pades' ? 'PAdES' : 'CAdES (.cms)') + (r.org ? ' · ' + r.org : '')));
       top.appendChild(nm);
       top.appendChild(el('span', 'jr-badge ' + (r.n && r.digest !== 'fail' && r.crypto !== 'fail' ? 'jr-signed' : 'jr-sent'), r.n ? f('dm.ver', { n: r.n }) : t('ec.noVer')));
       card.appendChild(top);
@@ -614,12 +671,24 @@
       }
       var acts = el('div', 'ecp-dls');
       var base = fileName(rec).replace(/-v\d+$/, '') + (v ? '-v' + v.n : '') + '-ecp' + (i + 1);
-      var cmsBtn = btn('btn btn-primary', '', function () {
-        EX.saveBlob(new Blob([E.unb64(r.cms)], { type: 'application/pkcs7-signature' }), base + '.cms');
-      });
-      cmsBtn.appendChild(el('b', null, t('ec.dlCms')));
-      cmsBtn.appendChild(el('small', null, t('ec.dlCmsSub')));
-      acts.appendChild(cmsBtn);
+      if (r.kind === 'pades' && v) {
+        var padBtn = btn('btn btn-primary', '', function () {
+          padBtn.disabled = true;
+          padesOf(v).then(function (pp) {
+            EX.saveBlob(new Blob([PA.embed(pp, E.unb64(r.cms))], { type: 'application/pdf' }), base + '-signed.pdf');
+          }).then(function () { padBtn.disabled = false; }, function () { padBtn.disabled = false; });
+        });
+        padBtn.appendChild(el('b', null, t('ec.dlPades')));
+        padBtn.appendChild(el('small', null, t('ec.dlPadesSub')));
+        acts.appendChild(padBtn);
+      } else {
+        var cmsBtn = btn('btn btn-primary', '', function () {
+          EX.saveBlob(new Blob([E.unb64(r.cms)], { type: 'application/pkcs7-signature' }), base + '.cms');
+        });
+        cmsBtn.appendChild(el('b', null, t('ec.dlCms')));
+        cmsBtn.appendChild(el('small', null, t('ec.dlCmsSub')));
+        acts.appendChild(cmsBtn);
+      }
       if (v) {
         var pdfBtn = btn('btn btn-ghost', '', function () {
           pdfBtn.disabled = true;
@@ -636,24 +705,38 @@
         acts.appendChild(docBtn);
       }
       card.appendChild(acts);
-      card.appendChild(el('p', 'jr-note ecp-howto', t('ec.howto')));
+      card.appendChild(el('p', 'jr-note ecp-howto', t(r.kind === 'pades' ? 'ec.howtoPades' : 'ec.howto')));
       if (i === justSigned) { card.classList.add('is-new'); window.setTimeout(function () { card.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 60); justSigned = -1; }
       card.appendChild(acts);
       list.appendChild(card);
     });
     if (!(rec.ecp || []).length) list.appendChild(el('p', 'jr-note', t('ec.empty')));
 
-    var file = el('input'); file.type = 'file'; file.accept = '.cms,.p7s,.sig,application/pkcs7-signature'; file.hidden = true;
+    var file = el('input'); file.type = 'file'; file.accept = '.cms,.p7s,.sig,.pdf,application/pkcs7-signature,application/pdf'; file.hidden = true;
     var impMsg = el('p', 'msg');
     var imp = btn('btn btn-ghost', t('ec.import'), function () { file.click(); });
     file.addEventListener('change', function () {
       var fl = file.files[0]; if (!fl) return;
       fl.arrayBuffer().then(function (buf) {
-        var u8 = new Uint8Array(buf), txt = new TextDecoder().decode(u8.subarray(0, 20));
-        var b64 = /^[A-Za-z0-9+\/=\s-]+$/.test(txt) && u8[0] !== 0x30 ? new TextDecoder().decode(u8).replace(/-----[^-]+-----/g, '') : E.b64(u8);
-        return ecpRecord(b64.replace(/\s+/g, ''), 'other');
-      }).then(function (r) {
-        rec.ecp = rec.ecp || []; rec.ecp.push(r);
+        var u8 = new Uint8Array(buf), known = (rec.ecp || []).map(function (x) { return x.cms; });
+        var jobs;
+        if (PA.isPdf(u8)) {
+          // Подписанный PDF (PAdES): каждая подпись файла — отдельная запись.
+          var sigs = PA.read(u8);
+          if (!sigs.length) throw new Error('no-sig');
+          jobs = sigs.map(function (sg) { return { b64: E.b64(sg.cms), opt: { kind: 'pades', content: sg.signed } }; });
+        } else {
+          var txt = new TextDecoder().decode(u8.subarray(0, 20));
+          var b64 = /^[A-Za-z0-9+\/=\s-]+$/.test(txt) && u8[0] !== 0x30 ? new TextDecoder().decode(u8).replace(/-----[^-]+-----/g, '') : E.b64(u8);
+          jobs = [{ b64: b64.replace(/\s+/g, ''), opt: {} }];
+        }
+        jobs = jobs.filter(function (j) { return known.indexOf(j.b64) < 0; });
+        if (!jobs.length) { flash(impMsg, t('ec.dup')); return null; }
+        return Promise.all(jobs.map(function (j) { return ecpRecord(j.b64, 'other', j.opt); }));
+      }).then(function (rs) {
+        if (!rs) return;
+        rec.ecp = rec.ecp || [];
+        rs.forEach(function (r) { rec.ecp.push(r); });
         return ST.put(rec).then(renderDoc);
       }).catch(function () { flash(impMsg, t('ec.badFile'), true); });
       file.value = '';

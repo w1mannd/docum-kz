@@ -44,13 +44,14 @@
         if (profile[id]) { state.data[id] = profile[id]; state.prefilled[id] = true; }
       });
     });
+    state.base = JSON.stringify(state.data);
     render();
   }
 
   function openDraft(d) {
     state.code = d.code; state.step = d.step; state.data = d.data; state.msgs = {}; state.itemMsgs = {};
     state.draftId = d.id; state.draftNote = t('b.draftOpened'); state.prefilled = {}; state.journalId = null; state.ownVer = 0; state.opened = null;
-    state.docLang = d.lang || window.getLang(); state.docLangSet = !!d.lang;
+    state.docLang = d.lang || window.getLang(); state.docLangSet = !!d.lang; state.base = null;
     // Предупреждения пройденных шагов нужны на шаге проверки и после открытия черновика.
     doc().steps.forEach(function (s, i) {
       if (i >= state.step) return;
@@ -67,36 +68,34 @@
   /* ---------- Черновик ---------- */
   function draftsLink() {
     var dl = el('a', 'crumb crumb-right', t('b.drafts'));
-    dl.href = 'profile.html#drafts';
+    dl.href = 'documents.html#drafts';
     return dl;
   }
-  function renderDraftBar() {
-    var bar = el('div', 'draft-bar');
-    var b = el('button', 'btn btn-ghost', t('b.draftSave'));
-    b.type = 'button'; b.id = 'btn-draft';
-    var st = el('p', 'msg', state.draftNote);
+  // Незаконченное заполнение сохраняется само: черновик лежит в «Моих документах» → «Незаконченные».
+  // Кнопки нет. Когда документ доходит до проверки, черновик заменяется записью журнала.
+  function renderDraftNote() {
+    var st = el('p', 'msg draft-auto', state.draftNote || t('b.draftAuto'));
     st.id = 'draft-status';
     st.setAttribute('role', 'status');
-    b.addEventListener('click', function () {
-      var id = DR.save(state.draftId, state.code, state.step, state.data, state.docLang);
-      if (id) {
-        state.draftId = id;
-        state.draftNote = t('b.draftDone') + ' ' + DR.fmtSaved(Date.now());
-        st.textContent = state.draftNote;
-        st.className = 'msg';
-        var head = root.querySelector('.builder-head');
-        if (head && !head.querySelector('.crumb-right')) head.insertBefore(draftsLink(), head.querySelector('.builder-title'));
-      } else {
-        state.draftNote = '';
-        st.textContent = t('e.draft');
-        st.className = 'msg msg-error';
-      }
-    });
-    bar.appendChild(b);
-    bar.appendChild(st);
-    bar.appendChild(el('p', 'hint', t('b.draftNote')));
-    return bar;
+    return st;
   }
+  var draftTimer = 0;
+  function scheduleDraft() {
+    window.clearTimeout(draftTimer);
+    draftTimer = window.setTimeout(saveDraft, 700);
+  }
+  function saveDraft() {
+    if (!state.code || isReview() || state.journalId) return;
+    if (!state.draftId && state.base === JSON.stringify(state.data) && state.step === 0) return;   // ещё ничего не введено
+    var id = DR.save(state.draftId, state.code, state.step, state.data, state.docLang);
+    var st = document.getElementById('draft-status');
+    if (id) {
+      state.draftId = id;
+      state.draftNote = t('b.draftDone') + ' ' + DR.fmtSaved(Date.now());
+      if (st) { st.textContent = state.draftNote; st.className = 'msg draft-auto is-saved'; }
+    } else if (st) { st.textContent = t('e.draft'); st.className = 'msg msg-error draft-auto'; }
+  }
+
 
   /* ---------- Избранное: коды документов в браузере ---------- */
   var FAV_KEY = 'docum-favs';
@@ -118,7 +117,7 @@
     if (count || !hasProfile) {
       var tip = el('p', 'notice notice-info');
       var link = el('a', null, count ? t('b.toDrafts').replace('{n}', count) : t('b.toProfile'));
-      link.href = count ? 'profile.html#drafts' : 'profile.html';
+      link.href = count ? 'documents.html#drafts' : 'profile.html';
       tip.appendChild(link);
       root.appendChild(tip);
     }
@@ -259,7 +258,7 @@
     if (isReview()) renderReview(main);
     else renderFields(main);
     // Черновик — для незаконченного заполнения. Готовый документ уже в «Моих документах».
-    if (!isReview()) main.appendChild(renderDraftBar());
+    if (!isReview()) { main.appendChild(renderDraftNote()); scheduleDraft(); }
 
     wrap.appendChild(main);
     root.appendChild(wrap);
@@ -784,6 +783,9 @@
       btn.disabled = false; btn.textContent = label;
     });
   }
+
+  root.addEventListener('input', function () { if (state.code && !isReview()) scheduleDraft(); });
+  root.addEventListener('change', function () { if (state.code && !isReview()) scheduleDraft(); });
 
   /* ---------- Запуск ---------- */
   var query = new URLSearchParams(location.search);

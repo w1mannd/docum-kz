@@ -4,8 +4,8 @@
   'use strict';
   var L = window.DocumLogic, TPL = window.DocumTemplates, DR = window.DocumDrafts;
   var t = window.t;
-  var box = document.getElementById('profile-form'), draftsBox = document.getElementById('drafts');
-  if (!box || !draftsBox) return;
+  var box = document.getElementById('profile-form');
+  if (!box) return;
 
   var values = DR.getProfile();
   var msgs = {};
@@ -95,7 +95,6 @@
       del.addEventListener('click', function () {
         if (!window.confirm(t('pr.deleteAsk'))) return;
         DR.clearProfile();
-        DR.clear();
         values = {}; msgs = {};
         note = { text: t('pr.deleted'), cls: 'msg' };
         renderAll();
@@ -122,54 +121,8 @@
     showNote();
   }
 
-  /* ---------- Черновики ---------- */
-  function draftTitle(d) {
-    return t('d.' + d.code) + (L.isEmpty(d.data.number) ? '' : ' № ' + String(d.data.number).trim());
-  }
-  function renderDrafts() {
-    draftsBox.textContent = '';
-    var drafts = DR.list();
-    var top = el('div', 'drafts-top');
-    top.appendChild(el('h2', 'section-title', t('b.drafts')));
-    if (drafts.length) {
-      var all = el('button', 'link-btn link-danger', t('b.draftsClear'));
-      all.type = 'button';
-      all.addEventListener('click', function () {
-        if (window.confirm(t('b.draftsClearAsk'))) { DR.clear(); renderDrafts(); }
-      });
-      top.appendChild(all);
-    }
-    draftsBox.appendChild(top);
-    if (!drafts.length) {
-      var p = el('p', 'hint', t('pr.noDrafts') + ' ');
-      var a = el('a', null, t('pr.toBuilder'));
-      a.href = 'constructor.html';
-      p.appendChild(a);
-      draftsBox.appendChild(p);
-      return;
-    }
-    var list = el('div', 'draft-list');
-    drafts.forEach(function (d) {
-      var row = el('div', 'draft');
-      var link = el('a', 'draft-open');
-      link.href = 'constructor.html?draft=' + encodeURIComponent(d.id);
-      link.appendChild(el('span', 'doc-row-title', draftTitle(d)));
-      var steps = TPL.DOCS[d.code].steps.length + 1;
-      link.appendChild(el('span', 'doc-row-text', t('b.draftSaved') + ' ' + DR.fmtSaved(d.savedAt) + ' · ' + t('b.stepOf').replace('{n}', d.step + 1).replace('{m}', steps)));
-      row.appendChild(link);
-      var rm = el('button', 'link-btn link-danger', t('b.remove'));
-      rm.type = 'button';
-      rm.setAttribute('aria-label', t('b.remove') + ': ' + draftTitle(d));
-      rm.addEventListener('click', function () {
-        if (window.confirm(t('b.draftRemoveAsk'))) { DR.remove(d.id); renderDrafts(); }
-      });
-      row.appendChild(rm);
-      list.appendChild(row);
-    });
-    draftsBox.appendChild(list);
-  }
-
-  function renderAll() { renderForm(); renderDrafts(); }
+  // Черновики перенесены в «Мои документы» → «Незаконченные».
+  function renderAll() { renderForm(); }
   renderAll();
   document.addEventListener('docum:lang', renderAll);
 })();
