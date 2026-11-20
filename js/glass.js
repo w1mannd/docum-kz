@@ -82,9 +82,15 @@
   function refresh() {
     var on = phone.matches && !calm.matches;
     document.documentElement.classList.toggle('lg-refract', on);
-    if (!on) return;
-    targets.forEach(function (t) {
-      var el = document.querySelector(t[0]);
+    if (!on) {
+      Array.prototype.forEach.call(document.querySelectorAll('.action-inner .btn'), function (b) { b.style.webkitBackdropFilter = b.style.backdropFilter = ''; b.removeAttribute('data-glass'); });
+      return;
+    }
+    // Кнопки шагов конструктора — то же стекло, что у меню: у каждой свой фильтр по её размеру.
+    var list = targets.slice();
+    Array.prototype.forEach.call(document.querySelectorAll('.action-inner .btn'), function (b, i) { list.push([b, 'lg-btn-' + i, true]); });
+    list.forEach(function (t) {
+      var el = typeof t[0] === 'string' ? document.querySelector(t[0]) : t[0];
       if (!el) return;
       var w = Math.round(el.offsetWidth), h = Math.round(el.offsetHeight);
       if (!w || !h) return;
@@ -92,6 +98,7 @@
       if (el.getAttribute('data-glass') === key && document.getElementById(t[1])) return;
       el.setAttribute('data-glass', key);
       buildFilter(t[1], w, h, parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0);
+      if (t[2]) { el.style.webkitBackdropFilter = el.style.backdropFilter = 'url(#' + t[1] + ') saturate(170%)'; }
     });
   }
 

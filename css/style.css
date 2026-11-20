@@ -374,9 +374,9 @@ button.step-btn { cursor: pointer; }
   .action-inner .btn { min-height: 44px; height: 44px; }
   /* Кнопки шагов: без общей подложки, каждая кнопка — отдельная стеклянная капсула, как поле ввода в Telegram. */
   .action-bar { background: transparent; border: 0; box-shadow: none; padding: 0; height: auto; }
-  .action-inner .btn, .action-inner .btn-primary, .action-inner .btn-ghost { height: 48px; min-height: 48px; background: var(--glass-btn); -webkit-backdrop-filter: blur(8px) saturate(180%); backdrop-filter: blur(8px) saturate(180%); border: .5px solid var(--glass-line); box-shadow: var(--glass-shadow); color: var(--text); }
+  .action-inner .btn, .action-inner .btn-primary, .action-inner .btn-ghost { height: 48px; min-height: 48px; background: var(--glass-fill); -webkit-backdrop-filter: var(--glass-filter); backdrop-filter: var(--glass-filter); border: .5px solid var(--glass-line); box-shadow: var(--glass-shadow); color: var(--text); }
   .action-inner .btn-primary { color: var(--accent); font-weight: 600; }
-  .action-inner .btn:hover, .action-inner .btn-primary:hover { background: var(--glass-btn); border-color: var(--glass-line); }
+  .action-inner .btn:hover, .action-inner .btn-primary:hover { background: var(--glass-fill); border-color: var(--glass-line); }
   .action-inner .btn:active { transform: scale(.96); }
   .action-inner .btn { transition: transform .2s cubic-bezier(.3, 1.6, .5, 1); }
   /* Пока заполняется документ, нижнее меню скрыто: внизу экрана только кнопки шагов. */
