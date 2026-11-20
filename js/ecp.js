@@ -190,5 +190,32 @@
   function b64(u8) { var s = ''; for (var i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); }
   function unb64(s) { var bin = atob(clean(s)), out = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i); return out; }
 
-  root.DocumEcp = { check: check, sign: sign, parse: parse, verify: verify, alg: alg, b64: b64, unb64: unb64, hex: hex };
+  /* ---------- Штамп ЭЦП ---------- */
+  // Блок «Документ подписан ЭЦП» для просмотра, .docx и .pdf. Текст — на языке документа,
+  // данные — из сертификата подписи. Это визуализация: юридически значим файл .cms.
+  function two(n) { return (n < 10 ? '0' : '') + n; }
+  function when(ms, withTime) {
+    var d = new Date(ms), off = -d.getTimezoneOffset() / 60;
+    return two(d.getDate()) + '.' + two(d.getMonth() + 1) + '.' + d.getFullYear() +
+      (withTime ? ' ' + two(d.getHours()) + ':' + two(d.getMinutes()) + ' (UTC' + (off >= 0 ? '+' : '') + off + ')' : '');
+  }
+  function stamp(r, lang) {
+    var L = (root.I18N && root.I18N[lang === 'kk' ? 'kk' : 'ru']) || {};
+    var s = function (k) { return L[k] || (root.I18N && root.I18N.ru[k]) || k; };
+    var serial = r.serial;
+    if (!serial && r.cms) { try { serial = parse(unb64(r.cms)).info.serial; } catch (e) { serial = ''; } }
+    var rows = [];
+    var add = function (k, v, mono) { if (v) rows.push([s(k), String(v), !!mono]); };
+    add('st.signer', [r.cn, r.given].filter(Boolean).join(' '));
+    add('st.iin', r.iin);
+    add('st.org', r.org ? r.org + (r.bin ? ', ' + s('st.bin') + ' ' + r.bin : '') : '');
+    add('st.time', when(r.time || r.at, true));
+    add('st.cert', serial ? serial.replace(/^(00)+(?=.)/, '').toUpperCase() : '', true);
+    add('st.issuer', r.issuer);
+    add('st.valid', r.from && r.to ? when(r.from) + ' — ' + when(r.to) : '');
+    add('st.hash', r.contentHash, true);
+    return { k: 'stamp', head: s('st.head'), rows: rows, foot: s('st.foot') };
+  }
+
+  root.DocumEcp = { check: check, sign: sign, parse: parse, verify: verify, alg: alg, b64: b64, unb64: unb64, hex: hex, stamp: stamp };
 })(window);

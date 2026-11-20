@@ -327,7 +327,7 @@
           ST.put(rec).then(function () { model = null; flash(msg, copy.note); renderDoc(); });
         }));
       }
-      acts.appendChild(btn('link-btn', '.docx', function () { EX.downloadDocx(clone(v.blocks), 'docum-' + rec.code + '-v' + v.n); }));
+      acts.appendChild(btn('link-btn', '.docx', function () { EX.downloadDocx(stamped(v), 'docum-' + rec.code + '-v' + v.n); }));
       li.appendChild(acts);
       list.appendChild(li);
     });
@@ -515,6 +515,13 @@
   function sha(u8) { return crypto.subtle.digest('SHA-256', u8).then(function (h) { return E.hex(new Uint8Array(h)); }); }
   function fdate(ms) { return ms ? fmt(ms).slice(0, 10) : '—'; }
   function pdfOf(v) { return EX.pdfBytes(v.blocks, v.at); }
+  // Версия с штампами всех ЭЦП, которыми она подписана: для печати и Word.
+  // Подписывается всегда чистый PDF версии (pdfOf), штамп в подписанное содержимое не входит.
+  function stamped(v) {
+    var out = clone(v.blocks);
+    (rec.ecp || []).forEach(function (r) { if (r.n === v.n) out.push(E.stamp(r, v.lang || rec.lang)); });
+    return out;
+  }
   // Подпись CMS → запись журнала: кто подписал, какую версию, результаты проверок.
   function ecpRecord(cmsB64, who) {
     var p = E.parse(E.unb64(cmsB64));
@@ -529,7 +536,7 @@
       }
       return next().then(function (n) {
         var inf = p.info, t0 = p.attrs.time || Date.now();
-        return { who: who, at: Date.now(), n: n, cms: cmsB64, contentHash: ch,
+        return { who: who, at: Date.now(), n: n, cms: cmsB64, contentHash: ch, serial: inf.serial || '',
           cn: (inf.subject || {}).cn || '', given: (inf.subject || {}).given || '', iin: inf.iin || '', bin: inf.bin || '', org: (inf.subject || {}).org || '',
           issuer: (inf.issuer || {}).cn || '', from: inf.notBefore, to: inf.notAfter, time: p.attrs.time || null,
           alg: E.alg(p.sigAlg).n + ' / ' + E.alg(p.digestAlg).n, digest: res.digest, crypto: res.crypto, gost: res.gost,
@@ -537,6 +544,7 @@
       });
     });
   }
+  var justSigned = -1;
   function renderEcp(panel) {
     var intro = el('section', 'sh-box ecp-intro');
     intro.appendChild(el('h2', 'panel-title', t('ec.title')));
@@ -561,6 +569,7 @@
         return E.sign(E.b64(pdf));
       }).then(function (cms) { return ecpRecord(cms, 'self'); }).then(function (r) {
         rec.ecp = rec.ecp || []; rec.ecp.push(r); rec.status = 'signed';
+        justSigned = rec.ecp.length - 1;
         return ST.put(rec).then(function () { renderDoc(); });
       }).catch(function (e) {
         go.disabled = false;
@@ -596,13 +605,39 @@
       ck(r.crypto === 'ok' ? 'ok' : r.crypto === 'fail' ? 'fail' : 'skip', r.crypto === 'ok' ? t('ec.cryOk') : r.crypto === 'fail' ? t('ec.cryBad') : t('ec.crySkip'));
       ck(r.valid === true ? 'ok' : r.valid === false ? 'fail' : 'skip', r.valid === true ? t('ec.certOk') : r.valid === false ? t('ec.certBad') : t('ec.certSkip'));
       card.appendChild(checks);
-      var acts = el('div', 'sh-row');
-      acts.appendChild(btn('btn btn-ghost', t('ec.dlCms'), function () {
-        EX.saveBlob(new Blob([E.unb64(r.cms)], { type: 'application/pkcs7-signature' }), fileName(rec) + '-' + (i + 1) + '.cms');
-      }));
-      if (r.n) acts.appendChild(btn('btn btn-ghost', t('ec.dlPdf'), function () {
-        pdfOf(rec.versions[r.n - 1]).then(function (pdf) { EX.saveBlob(new Blob([pdf], { type: 'application/pdf' }), fileName(rec) + '.pdf'); });
-      }));
+      // Штамп на документе: как он будет выглядеть в PDF и Word.
+      var v = r.n ? rec.versions[r.n - 1] : null;
+      if (v) {
+        var prev = el('div', 'sheet ecp-stamp-prev'); prev.lang = v.lang || rec.lang;
+        prev.innerHTML = EX.toHTML([E.stamp(r, v.lang || rec.lang)]);
+        card.appendChild(prev);
+      }
+      var acts = el('div', 'ecp-dls');
+      var base = fileName(rec).replace(/-v\d+$/, '') + (v ? '-v' + v.n : '') + '-ecp' + (i + 1);
+      var cmsBtn = btn('btn btn-primary', '', function () {
+        EX.saveBlob(new Blob([E.unb64(r.cms)], { type: 'application/pkcs7-signature' }), base + '.cms');
+      });
+      cmsBtn.appendChild(el('b', null, t('ec.dlCms')));
+      cmsBtn.appendChild(el('small', null, t('ec.dlCmsSub')));
+      acts.appendChild(cmsBtn);
+      if (v) {
+        var pdfBtn = btn('btn btn-ghost', '', function () {
+          pdfBtn.disabled = true;
+          EX.pdfBytes(stamped(v), v.at).then(function (pdf) {
+            EX.saveBlob(new Blob([pdf], { type: 'application/pdf' }), base + '-stamp.pdf');
+          }).then(function () { pdfBtn.disabled = false; }, function () { pdfBtn.disabled = false; });
+        });
+        pdfBtn.appendChild(el('b', null, t('ec.dlPdf')));
+        pdfBtn.appendChild(el('small', null, t('ec.dlPdfSub')));
+        acts.appendChild(pdfBtn);
+        var docBtn = btn('btn btn-ghost', '', function () { EX.downloadDocx(stamped(v), base + '-stamp'); });
+        docBtn.appendChild(el('b', null, t('ec.dlDocx')));
+        docBtn.appendChild(el('small', null, t('ec.dlPdfSub')));
+        acts.appendChild(docBtn);
+      }
+      card.appendChild(acts);
+      card.appendChild(el('p', 'jr-note ecp-howto', t('ec.howto')));
+      if (i === justSigned) { card.classList.add('is-new'); window.setTimeout(function () { card.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 60); justSigned = -1; }
       card.appendChild(acts);
       list.appendChild(card);
     });

@@ -50,6 +50,11 @@
           // Подписи идут отдельным рядом, поэтому стоят на одном уровне при любой длине реквизитов.
           return '<div class="d-cols">' + col(b.left, true) + col(b.right, true) + '</div>' +
             '<div class="d-cols d-cols-sign">' + col(b.signLeft) + col(b.signRight) + '</div>';
+        case 'stamp':
+          // Штамп ЭЦП: визуальная отметка о подписи. Сама подпись — в файле .cms.
+          return '<div class="d-stamp"><p class="d-stamp-h">' + esc(b.head) + '</p><dl>' + b.rows.map(function (r) {
+            return '<dt>' + esc(r[0]) + '</dt><dd' + (r[2] ? ' class="d-mono"' : '') + '>' + esc(r[1]) + '</dd>';
+          }).join('') + '</dl><p class="d-stamp-f">' + esc(b.foot) + '</p></div>';
         case 'table':
           var head = b.headTop
             ? '<tr>' + b.headTop.map(function (h) {
@@ -131,6 +136,32 @@
               new D.TableRow({ cantSplit: true, children: [cell(b.left, true), cell(b.right, true)] }),
               new D.TableRow({ cantSplit: true, children: [cell(b.signLeft, false, 240), cell(b.signRight, false, 240)] })
             ]
+          }));
+          break;
+        case 'stamp':
+          var blue = { style: D.BorderStyle.SINGLE, size: 12, color: '1F4FD8' };
+          var lab = Math.round(PAGE_W * 0.34);
+          var srow = function (r) {
+            return new D.TableRow({ cantSplit: true, children: [
+              new D.TableCell({ width: { size: lab, type: D.WidthType.DXA }, borders: noBorders, margins: { left: 160, right: 60 },
+                children: [para(r[0], { spacing: { after: 30 } }, { size: 18, color: '5A6478' })] }),
+              new D.TableCell({ width: { size: PAGE_W - lab, type: D.WidthType.DXA }, borders: noBorders, margins: { left: 60, right: 160 },
+                children: [para(r[1], { spacing: { after: 30 } }, { size: r[2] ? 15 : 19, bold: !r[2], font: r[2] ? 'Courier New' : FONT_DOCX })] })
+            ] });
+          };
+          var inner = new D.Table({ width: { size: PAGE_W - 120, type: D.WidthType.DXA }, columnWidths: [lab, PAGE_W - 120 - lab], borders: noBorders, rows: b.rows.map(srow) });
+          out.push(para('', { spacing: { before: 200, after: 0 } }));
+          out.push(new D.Table({
+            width: { size: PAGE_W, type: D.WidthType.DXA }, columnWidths: [PAGE_W],
+            borders: { top: blue, bottom: blue, left: blue, right: blue, insideHorizontal: none, insideVertical: none },
+            rows: [new D.TableRow({ cantSplit: true, children: [new D.TableCell({
+              width: { size: PAGE_W, type: D.WidthType.DXA }, margins: { top: 120, bottom: 120, left: 60, right: 60 },
+              children: [
+                para(b.head, { alignment: D.AlignmentType.CENTER, spacing: { after: 100 }, keepNext: true }, { bold: true, size: 20, color: '1F4FD8' }),
+                inner,
+                para(b.foot, { alignment: D.AlignmentType.CENTER, spacing: { before: 80, after: 0 } }, { size: 16, color: '5A6478' })
+              ]
+            })] })]
           }));
           break;
         case 'table':
@@ -216,6 +247,20 @@
               { columns: [col(b.left, true), col(b.right, true)], columnGap: 16 },
               { columns: [col(b.signLeft), col(b.signRight)], columnGap: 16, margin: [0, 12, 0, 0] }
             ]
+          });
+          break;
+        case 'stamp':
+          content.push({
+            unbreakable: true, margin: [0, 12, 0, 4],
+            table: { widths: ['*'], body: [[{ stack: [
+              { text: b.head, bold: true, fontSize: 10, color: '#1F4FD8', alignment: 'center', margin: [0, 0, 0, 6] },
+              { table: { widths: [150, '*'], body: b.rows.map(function (r) {
+                return [{ text: r[0], fontSize: 8.5, color: '#5A6478' }, { text: r[1], fontSize: r[2] ? 7.5 : 9.5, bold: !r[2] }];
+              }) }, layout: { hLineWidth: function () { return 0; }, vLineWidth: function () { return 0; }, paddingLeft: function () { return 2; }, paddingRight: function () { return 2; }, paddingTop: function () { return 1.5; }, paddingBottom: function () { return 1.5; } } },
+              { text: b.foot, fontSize: 7.5, color: '#5A6478', alignment: 'center', margin: [0, 6, 0, 0] }
+            ] }]] },
+            layout: { hLineWidth: function () { return 1.2; }, vLineWidth: function () { return 1.2; }, hLineColor: function () { return '#1F4FD8'; }, vLineColor: function () { return '#1F4FD8'; },
+              paddingLeft: function () { return 10; }, paddingRight: function () { return 10; }, paddingTop: function () { return 8; }, paddingBottom: function () { return 8; } }
           });
           break;
         case 'table':

@@ -254,6 +254,15 @@ button.step-btn { cursor: pointer; }
 .d-p.d-center { text-align: center; }
 .d-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; font-size: 14px; }
 .d-cols p { margin: 0 0 3px; }
+.d-stamp { margin: 22px 0 6px; padding: 14px 16px 12px; border: 1.5px solid #1F4FD8; border-radius: 6px; color: #1A1F2B; background: rgba(31, 79, 216, .03); break-inside: avoid; font-size: 13px; }
+.d-stamp .d-stamp-h { margin: 0 0 10px; text-align: center; font-weight: 700; font-size: 12.5px; letter-spacing: .02em; color: #1F4FD8; }
+.d-stamp dl { display: grid; grid-template-columns: minmax(110px, 34%) 1fr; gap: 3px 12px; margin: 0; }
+.d-stamp dt { color: #5A6478; }
+.d-stamp dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.d-stamp dd.d-mono { font: 500 11.5px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.d-stamp .d-stamp-f { margin: 10px 0 0; text-align: center; font-size: 11.5px; color: #5A6478; }
+@media (max-width: 520px) { .d-stamp { padding: 12px; } .d-stamp dl { grid-template-columns: 1fr; gap: 1px; } .d-stamp dd { margin-bottom: 5px; } .d-stamp .d-stamp-h { font-size: 11.5px; letter-spacing: 0; } }
+.d-stamp .d-stamp-h { overflow-wrap: normal; word-break: normal; hyphens: manual; }
 .d-cols-sign { margin-top: 14px; }
 .d-tablewrap { overflow-x: auto; }
 .d-table { width: 100%; border-collapse: collapse; font-size: 13px; overflow-wrap: normal; }
@@ -704,17 +713,19 @@ a.card:hover .more::after { transform: translateX(4px); }
 
 /* ---------- Действия на шаге проверки ---------- */
 .review-acts { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
-.j-save { gap: 8px; min-height: 44px; padding: 0 18px; font-size: 15px; transition: border-color .2s ease, color .2s ease, background-color .2s ease, transform .15s var(--ease); }
-.j-save svg { width: 20px; height: 20px; flex: none; }
-.j-save:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
-.j-save.is-saved { border-color: rgba(52, 199, 89, .5); background: rgba(52, 199, 89, .1); color: #248A3D; animation: rise .4s var(--ease) backwards; }
-.j-save.is-saved:hover { color: #1A7F37; }
+.j-status { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); font-size: 14px; text-decoration: none; transition: border-color .2s ease, color .2s ease, background-color .2s ease; }
+.j-status svg { width: 18px; height: 18px; flex: none; opacity: .35; transition: opacity .2s ease; }
+.j-status b { font-weight: 600; color: var(--accent); white-space: nowrap; }
+.j-status.is-saved { border-color: rgba(52, 199, 89, .45); background: rgba(52, 199, 89, .09); color: var(--text); animation: rise .4s var(--ease) backwards; }
+.j-status.is-saved svg { opacity: 1; color: #248A3D; }
+.j-status.is-saved:hover { text-decoration: none; border-color: rgba(52, 199, 89, .8); }
+.j-status.is-saved:hover b { text-decoration: underline; }
 .review-again { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 15px; }
 .review-again::before { content: '↺'; font-size: 17px; }
 .review-again:hover { color: var(--accent); }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .j-save.is-saved { color: #30D158; } }
-:root[data-theme="dark"] .j-save.is-saved { color: #30D158; }
-@media (max-width: 768px) { .review-acts { flex-direction: column; align-items: stretch; } .j-save { justify-content: center; } }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .j-status.is-saved svg { color: #30D158; } }
+:root[data-theme="dark"] .j-status.is-saved svg { color: #30D158; }
+@media (max-width: 768px) { .review-acts { flex-direction: column; align-items: stretch; } .j-status { justify-content: center; border-radius: 14px; padding: 8px 14px; flex-wrap: wrap; text-align: center; } }
 
 /* ---------- «Мои документы»: новый вид ---------- */
 .jr-top { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; flex-wrap: wrap; margin-bottom: 22px; }
@@ -819,3 +830,14 @@ a.card:hover .more::after { transform: translateX(4px); }
 .ecp-share { display: grid; gap: 8px; padding-bottom: 14px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
 .ecp-share .btn { justify-self: start; }
 @media (max-width: 768px) { .ecp-dl { grid-template-columns: 1fr; } .ecp-dl dd { margin-bottom: 6px; } }
+
+/* ЭЦП: скачивание подписанного документа и превью штампа */
+.ecp-stamp-prev { margin: 14px 0 0; padding: 4px 14px; border-radius: 12px; font-size: 14px; }
+.ecp-dls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+.ecp-dls .btn { flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; min-height: 58px; padding: 10px 14px; text-align: left; white-space: normal; line-height: 1.25; }
+.ecp-dls .btn b { font-size: 14.5px; font-weight: 600; }
+.ecp-dls .btn small { font-size: 12px; font-weight: 400; opacity: .78; }
+.ecp-howto { margin-top: 12px; }
+.ecp-card.is-new { animation: ecpNew 1.6s var(--ease); }
+@keyframes ecpNew { 0% { box-shadow: 0 0 0 0 rgba(52, 199, 89, .55); } 60% { box-shadow: 0 0 0 8px rgba(52, 199, 89, 0); } }
+@media (max-width: 768px) { .ecp-dls { grid-template-columns: 1fr; } .ecp-stamp-prev { padding: 0; border: 0; background: transparent; } }

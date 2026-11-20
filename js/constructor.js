@@ -32,7 +32,7 @@
 
   function start(code) {
     state.code = code; state.step = 0; state.data = {}; state.msgs = {}; state.itemMsgs = {};
-    state.draftId = null; state.draftNote = ''; state.prefilled = {}; state.journalId = null;
+    state.draftId = null; state.draftNote = ''; state.prefilled = {}; state.journalId = null; state.ownVer = 0; state.opened = null;
     state.docLang = window.getLang(); state.docLangSet = false;
     var profile = DR.getProfile();
     doc().steps.forEach(function (s) {
@@ -49,7 +49,7 @@
 
   function openDraft(d) {
     state.code = d.code; state.step = d.step; state.data = d.data; state.msgs = {}; state.itemMsgs = {};
-    state.draftId = d.id; state.draftNote = t('b.draftOpened'); state.prefilled = {}; state.journalId = null;
+    state.draftId = d.id; state.draftNote = t('b.draftOpened'); state.prefilled = {}; state.journalId = null; state.ownVer = 0; state.opened = null;
     state.docLang = d.lang || window.getLang(); state.docLangSet = !!d.lang;
     // Предупреждения пройденных шагов нужны на шаге проверки и после открытия черновика.
     doc().steps.forEach(function (s, i) {
@@ -258,7 +258,8 @@
 
     if (isReview()) renderReview(main);
     else renderFields(main);
-    main.appendChild(renderDraftBar());
+    // Черновик — для незаконченного заполнения. Готовый документ уже в «Моих документах».
+    if (!isReview()) main.appendChild(renderDraftBar());
 
     wrap.appendChild(main);
     root.appendChild(wrap);
@@ -666,19 +667,20 @@
     st.id = 'dl-status';
     st.setAttribute('role', 'status');
     main.appendChild(st);
-    // Действия после проверки: сохранить в журнал (с состоянием «сохранено») и начать заново.
+    // Документ сохраняется в «Мои документы» сам, как только открыт шаг проверки:
+    // отдельная кнопка не нужна. Внизу — отметка о сохранении и ссылка в редактор.
     var acts = el('div', 'review-acts');
-    var keep = el('button', 'btn btn-ghost j-save');
-    keep.type = 'button'; keep.id = 'j-save';
-    keep.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 7c0-1.1.9-2 2-2h4l2 2h7c1.1 0 2 .9 2 2v8c0 1.1-.9 2-2 2h-13c-1.1 0-2-.9-2-2z"/><path d="M12 10.5v5M9.5 13h5"/></svg>';
-    keep.appendChild(el('span', null, t('b.toJournal')));
-    keep.addEventListener('click', saveToJournal);
-    acts.appendChild(keep);
+    var mark = el('a', 'j-status');
+    mark.id = 'j-status'; mark.setAttribute('role', 'status');
+    mark.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+    mark.appendChild(el('span', null, t('b.saving')));
+    acts.appendChild(mark);
     main.appendChild(acts);
     var again = el('button', 'link-btn review-again', t('b.restart'));
     again.type = 'button';
     again.addEventListener('click', function () { start(state.code); scrollTop(); });
     acts.appendChild(again);
+    saveToJournal();
   }
 
   // Текст документа без оформления: для вставки в письмо или мессенджер.
@@ -709,37 +711,60 @@
   /* ---------- Журнал «Мои документы» ---------- */
   // Готовый документ попадает в журнал: новый — новой записью, изменённый — новой версией той же записи.
   // Кнопка «Сохранить» превращается в отметку «Сохранено» со ссылкой на редактор.
-  function markSaved(jid) {
-    var keep = document.getElementById('j-save');
-    if (!keep) return;
-    var a = el('a', 'btn btn-ghost j-save is-saved');
-    a.id = 'j-save'; a.href = 'documents.html?id=' + jid;
-    a.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
-    a.appendChild(el('span', null, t('b.inJournal')));
-    keep.replaceWith(a);
+  function markSaved(rec) {
+    var mark = document.getElementById('j-status');
+    if (!mark) return;
+    mark.href = 'documents.html?id=' + rec.id;
+    mark.classList.add('is-saved');
+    mark.querySelector('span').innerHTML = '';
+    mark.querySelector('span').appendChild(document.createTextNode(t('b.inJournal') + ' · ' + t('b.verN').replace('{n}', rec.versions.length) + ' '));
+    mark.querySelector('span').appendChild(el('b', null, t('b.openEditor')));
   }
+  // Сохранения идут строго по очереди, чтобы быстрые повторные вызовы не создали две версии.
+  var saving = Promise.resolve();
   function saveToJournal() {
+    saving = saving.then(saveNow, saveNow);
+    return saving;
+  }
+  // Версию, которую уже отправили по ссылке или подписали, переписывать нельзя.
+  function used(rec, n) {
+    return ['shares', 'signs', 'ecp'].some(function (k) { return (rec[k] || []).some(function (x) { return x.n === n; }); });
+  }
+  function saveNow() {
     var ST = window.DocumStore;
-    if (!ST) return Promise.resolve(null);
+    if (!ST || !state.code) return Promise.resolve(null);
     var blocks = TPL.build(state.code, state.data, state.docLang);
     var data = JSON.parse(JSON.stringify(state.data));
     return ST.hash(ST.text(blocks)).then(function (h) {
       var load = state.journalId ? ST.get(state.journalId) : Promise.resolve(null);
       return load.then(function (rec) {
+        if (rec && state.opened && state.opened === JSON.stringify([state.data, state.docLang])) return rec;
         if (rec) {
           var last = rec.versions[rec.versions.length - 1];
           if (last && last.hash === h) return rec;
+          // Пока человек на шаге проверки (сменил язык, вернулся и поправил поле),
+          // обновляется версия этого же сеанса — новая появляется только в новом сеансе.
+          if (last && state.ownVer && last.n === state.ownVer && !last.edited && !last.byOther && !used(rec, last.n)) {
+            last.at = Date.now(); last.blocks = blocks; last.data = data; last.lang = state.docLang; last.hash = h;
+            rec.number = data.number || rec.number; rec.lang = state.docLang;
+            return ST.put(rec);
+          }
+          state.ownVer = rec.versions.length + 1;
           rec.versions.push({ n: rec.versions.length + 1, at: Date.now(), blocks: blocks, data: data, lang: state.docLang, hash: h, note: '' });
           rec.number = data.number || rec.number;
           return ST.put(rec);
         }
+        state.ownVer = 1;
         rec = { id: ST.newId(), code: state.code, lang: state.docLang, number: data.number || '', created: Date.now(), status: 'final',
           versions: [{ n: 1, at: Date.now(), blocks: blocks, data: data, lang: state.docLang, hash: h, note: '' }], shares: [], signs: [] };
         return ST.put(rec);
       });
     }).then(function (rec) {
-      if (rec) state.journalId = rec.id;
-      if (rec) markSaved(rec.id);
+      if (rec) {
+        state.journalId = rec.id; markSaved(rec);
+        // Документ дошёл до журнала — черновик, из которого его заполняли, больше не нужен.
+        if (state.draftId) { DR.remove(state.draftId); state.draftId = null; state.draftNote = ''; }
+      }
       return rec;
     }).catch(function (e) { if (window.console) console.error(e); return null; });
   }
@@ -757,7 +782,6 @@
       status.className = 'msg msg-error';
     }).then(function () {
       btn.disabled = false; btn.textContent = label;
-      if (status.className.indexOf('msg-error') < 0) saveToJournal();
     });
   }
 
@@ -772,6 +796,8 @@
       var last = rec.versions[rec.versions.length - 1];
       openDraft({ code: rec.code, step: TPL.DOCS[rec.code].steps.length, data: JSON.parse(JSON.stringify(last.data || {})), lang: last.lang || rec.lang });
       state.draftId = null; state.draftNote = ''; state.journalId = rec.id;
+      // Пока данные не изменены, это та же версия журнала (даже если её правили в редакторе).
+      state.opened = JSON.stringify([state.data, state.docLang]);
       render();
     }).catch(function () { render(); });
   }

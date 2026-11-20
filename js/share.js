@@ -127,11 +127,12 @@
         var bad = p.fields.filter(function (id) { var def = TPL.FIELDS[id]; if (!def || def.type === 'check') return false; var r = L.checkField(def, id, data[id], data, p.code); return r && r.type === 'error'; });
         if (bad.length) { em.textContent = t('sp.fix'); em.className = 'msg msg-error'; return; }
       }
-      var at = p.mode === 'fill' ? Date.now() : (p.vat || p.at), cmsB64 = null;
+      var at = p.mode === 'fill' ? Date.now() : (p.vat || p.at), cmsB64 = null, pdfHash = '';
       em.className = 'msg'; em.textContent = t('ec.prep');
       eb.disabled = true;
       EX.pdfBytes(blocks, at).then(function (pdf) {
         em.textContent = t('ec.confirm');
+        crypto.subtle.digest('SHA-256', pdf).then(function (h) { pdfHash = E.hex(new Uint8Array(h)); });
         return E.sign(E.b64(pdf));
       }).then(function (cms) {
         cmsB64 = cms;
@@ -153,7 +154,18 @@
         var row = el('div', 'sh-row');
         row.appendChild(btn('btn btn-primary', t('dm.copy'), function (e2) { var b2 = e2.currentTarget; (navigator.clipboard ? navigator.clipboard.writeText(link) : Promise.reject()).then(function () { b2.textContent = t('dm.copied'); }, function () { field.select(); document.execCommand('copy'); b2.textContent = t('dm.copied'); }); }));
         row.appendChild(btn('btn btn-ghost', t('ec.dlCms'), function () { EX.saveBlob(new Blob([E.unb64(cmsB64)], { type: 'application/pkcs7-signature' }), 'docum-' + p.code + '-' + (p.number || 'doc') + '-ecp.cms'); }));
+        // PDF со штампом ЭЦП — для печати; юридически значим .cms.
+        var stampPdf = btn('btn btn-ghost', t('ec.dlPdf'), function () {
+          var pr = E.parse(E.unb64(cmsB64)), inf = pr.info, sj = inf.subject || {};
+          var r = { cn: sj.cn || '', given: sj.given || '', iin: inf.iin || '', bin: inf.bin || '', org: sj.org || '', issuer: (inf.issuer || {}).cn || '',
+            from: inf.notBefore, to: inf.notAfter, time: pr.attrs.time || null, at: Date.now(), serial: inf.serial || '', contentHash: pdfHash };
+          EX.pdfBytes(blocks.concat([E.stamp(r, p.lang)]), at).then(function (pdf) {
+            EX.saveBlob(new Blob([pdf], { type: 'application/pdf' }), 'docum-' + p.code + '-' + (p.number || 'doc') + '-ecp-stamp.pdf');
+          });
+        });
+        row.appendChild(stampPdf);
         out.appendChild(row);
+        out.appendChild(el('p', 'jr-note', t('ec.howto')));
         em.textContent = '';
       }).catch(function (e) {
         eb.disabled = false; em.className = 'msg msg-error';
