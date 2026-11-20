@@ -54,7 +54,7 @@
           // Штамп ЭЦП: визуальная отметка о подписи. Сама подпись — в файле .cms.
           return '<div class="d-stamp"><p class="d-stamp-h">' + esc(b.head) + '</p><dl>' + b.rows.map(function (r) {
             return '<dt>' + esc(r[0]) + '</dt><dd' + (r[2] ? ' class="d-mono"' : '') + '>' + esc(r[1]) + '</dd>';
-          }).join('') + '</dl><p class="d-stamp-f">' + esc(b.foot) + '</p></div>';
+          }).join('') + '</dl>' + (b.foot ? '<p class="d-stamp-f">' + esc(b.foot) + '</p>' : '') + '</div>';
         case 'table':
           var head = b.headTop
             ? '<tr>' + b.headTop.map(function (h) {
@@ -140,7 +140,7 @@
           break;
         case 'stamp':
           var blue = { style: D.BorderStyle.SINGLE, size: 12, color: '1F4FD8' };
-          var SW = Math.round(PAGE_W * 0.6), lab = Math.round(SW * 0.3);
+          var SW = Math.round(PAGE_W * (b.rows.length > 1 ? 0.6 : 0.48)), lab = Math.round(SW * 0.3);
           var srow = function (r) {
             return new D.TableRow({ cantSplit: true, children: [
               new D.TableCell({ width: { size: lab, type: D.WidthType.DXA }, borders: noBorders, margins: { left: 160, right: 60 },
@@ -158,9 +158,8 @@
               width: { size: SW, type: D.WidthType.DXA }, margins: { top: 80, bottom: 80, left: 60, right: 60 },
               children: [
                 para(b.head, { alignment: D.AlignmentType.CENTER, spacing: { after: 60 }, keepNext: true }, { bold: true, size: 16, color: '1F4FD8' }),
-                inner,
-                para(b.foot, { alignment: D.AlignmentType.CENTER, spacing: { before: 50, after: 0 } }, { size: 13, color: '5A6478' })
-              ]
+                inner
+              ].concat(b.foot ? [para(b.foot, { alignment: D.AlignmentType.CENTER, spacing: { before: 50, after: 0 } }, { size: 13, color: '5A6478' })] : [])
             })] })]
           }));
           break;
@@ -252,12 +251,12 @@
         case 'stamp':
           content.push({
             unbreakable: true, margin: [0, 12, 0, 4],
-            table: { widths: [290], body: [[{ stack: [
+            table: { widths: [b.rows.length > 1 ? 290 : 230], body: [[{ stack: [
               { text: b.head, bold: true, fontSize: 8, color: '#1F4FD8', alignment: 'center', margin: [0, 0, 0, 4] },
               { table: { widths: [72, '*'], body: b.rows.map(function (r) {
                 return [{ text: r[0], fontSize: 7, color: '#5A6478' }, { text: r[1], fontSize: r[2] ? 6.5 : 8, bold: !r[2] }];
               }) }, layout: { hLineWidth: function () { return 0; }, vLineWidth: function () { return 0; }, paddingLeft: function () { return 2; }, paddingRight: function () { return 2; }, paddingTop: function () { return 1.5; }, paddingBottom: function () { return 1.5; } } },
-              { text: b.foot, fontSize: 6.5, color: '#5A6478', alignment: 'center', margin: [0, 4, 0, 0] }
+              b.foot ? { text: b.foot, fontSize: 6.5, color: '#5A6478', alignment: 'center', margin: [0, 4, 0, 0] } : { text: '', fontSize: 1 }
             ] }]] },
             layout: { hLineWidth: function () { return 1.2; }, vLineWidth: function () { return 1.2; }, hLineColor: function () { return '#1F4FD8'; }, vLineColor: function () { return '#1F4FD8'; },
               paddingLeft: function () { return 8; }, paddingRight: function () { return 8; }, paddingTop: function () { return 6; }, paddingBottom: function () { return 6; } }

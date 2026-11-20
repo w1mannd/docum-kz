@@ -73,25 +73,6 @@
     });
   }
 
-  // Сертификат выбранного ключа до подписания: нужен, чтобы штамп ЭЦП вошёл в подписываемый PDF.
-  // NCALayer показывает выбор ключа и пароль; сайт получает только сертификат (открытые данные).
-  function keyInfo() {
-    return call({ module: 'kz.gov.pki.knca.commonUtils', method: 'getKeyInfo', args: ['PKCS12'] }).then(function (r) {
-      var o = r && (r.responseObject || (r.body && r.body.result));
-      if (String(r.code) === '200' && o) {
-        var pem = typeof o === 'string' ? o : o.pem || o.certificate || Object.keys(o).map(function (k) { return o[k]; })
-          .filter(function (x) { return typeof x === 'string' && /^(-----BEGIN|MII)/.test(x); })[0];
-        if (!pem) throw { code: 'noCert' };
-        var info = cert(unb64(pem));
-        return info;
-      }
-      if (/cancel|отмен|action\.canceled/i.test(String(r.message || '') + String(r.code || ''))) throw { code: 'cancel' };
-      if (/module|bundle|not found|не найден/i.test(String(r.message || r.code || ''))) throw { code: 'noModule' };
-      if (String(r.code) === '200') throw { code: 'cancel' };
-      throw { code: 'layer', message: r.message || r.code };
-    });
-  }
-
   /* ---------- ASN.1 DER ---------- */
   function node(b, off) {
     var tag = b[off], p = off + 1, len = b[p++], indef = false;
@@ -224,17 +205,9 @@
   function stamp(r, lang) {
     var L = (root.I18N && root.I18N[lang === 'kk' ? 'kk' : 'ru']) || {};
     var s = function (k) { return L[k] || (root.I18N && root.I18N.ru[k]) || k; };
-    var serial = r.serial;
-    if (!serial && r.cms) { try { serial = parse(unb64(r.cms)).info.serial; } catch (e) { serial = ''; } }
-    var rows = [];
-    var add = function (k, v, mono) { if (v) rows.push([s(k), String(v), !!mono]); };
-    // Компактный штамп: кто, когда и каким сертификатом. Остальное — в карточке подписи и в самой подписи.
-    add('st.signer', [r.cn, r.given].filter(Boolean).join(' '));
-    if (r.iin || r.bin) rows.push([[r.iin ? s('st.iin') : '', r.bin ? s('st.bin') : ''].filter(Boolean).join(' / '), [r.iin, r.bin].filter(Boolean).join(' / '), false]);
-    add('st.time', when(r.time || r.at, true));
-    add('st.cert', serial ? serial.replace(/^(00)+(?=.)/, '').toUpperCase() : '', true);
-    return { k: 'stamp', head: s('st.head'), rows: rows, foot: s(r.embedded ? 'st.footPades' : 'st.foot') };
+    // Штамп без данных подписанта: отметка и время. Кто подписал — в самой подписи и в карточке на сайте.
+    return { k: 'stamp', head: s('st.head'), rows: [[s('st.time'), when(r.time || r.at, true), false]], foot: '' };
   }
 
-  root.DocumEcp = { check: check, sign: sign, parse: parse, verify: verify, alg: alg, b64: b64, unb64: unb64, hex: hex, stamp: stamp, keyInfo: keyInfo, cert: cert };
+  root.DocumEcp = { check: check, sign: sign, parse: parse, verify: verify, alg: alg, b64: b64, unb64: unb64, hex: hex, stamp: stamp, cert: cert };
 })(window);

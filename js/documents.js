@@ -622,29 +622,14 @@
     var v = last(rec), msg = el('p', 'msg'); msg.setAttribute('role', 'status');
     var go = btn('btn btn-primary ecp-sign', f('ec.sign', { n: v.n }), function () {
       go.disabled = true; flash(msg, t('ec.prep'));
-      // 1) NCALayer показывает выбор ключа — берём сертификат и собираем штамп ЭЦП;
-      // 2) штамп входит в PDF, PDF готовится под PAdES; 3) NCALayer подписывает, подпись встаёт внутрь файла.
-      // Получается один PDF: и штамп, и настоящая подпись. Если модуль выбора ключа недоступен — PAdES без штампа.
-      var prep = null, stampB = null, picked = null, lang = v.lang || rec.lang;
-      flash(msg, t('ec.pickKey'));
-      E.keyInfo().catch(function (e) { if (e && e.code === 'noModule') return null; throw e; }).then(function (inf) {
-        picked = inf;
-        return pdfOf(v).then(sha).then(function (plainHash) {
-          if (inf) {
-            var sj = inf.subject || {};
-            stampB = E.stamp({ cn: sj.cn || '', given: sj.given || '', iin: inf.iin || '', bin: inf.bin || '', org: sj.org || '',
-              issuer: (inf.issuer || {}).cn || '', from: inf.notBefore, to: inf.notAfter, time: Date.now(), serial: inf.serial,
-              contentHash: plainHash, embedded: true }, lang);
-          }
-          return padesOf(v, stampB);
-        });
-      }).then(function (pp) {
+      // Штамп (отметка и время) входит в PDF до подписи, NCALayer подписывает этот PDF один раз,
+      // подпись встаёт внутрь файла (PAdES). Получается один PDF: и штамп, и настоящая подпись.
+      var prep = null, stampB = E.stamp({ time: Date.now() }, v.lang || rec.lang);
+      padesOf(v, stampB).then(function (pp) {
         prep = pp;
         flash(msg, t('ec.confirm'));
         return E.sign(E.b64(prep.toSign), true);
       }).then(function (cms) {
-        // Подписать нужно тем же ключом, чей сертификат попал в штамп.
-        if (picked && E.parse(E.unb64(cms)).info.serial !== picked.serial) throw { code: 'otherKey' };
         return ecpRecord(cms, 'self', { kind: 'pades', content: prep.toSign, stamp: stampB });
       }).then(function (r) {
         rec.ecp = rec.ecp || []; rec.ecp.push(r); rec.status = 'signed';
@@ -653,7 +638,7 @@
       }).catch(function (e) {
         go.disabled = false;
         var code = e && e.code;
-        flash(msg, code === 'noLayer' ? t('ec.none') : code === 'cancel' ? t('ec.cancel') : code === 'otherKey' ? t('ec.otherKey') : code === 'noCert' ? t('ec.noCert') : code === 'timeout' ? t('ec.timeout') : f('ec.err', { m: (e && e.message) || '' }), true);
+        flash(msg, code === 'noLayer' ? t('ec.none') : code === 'cancel' ? t('ec.cancel') : code === 'timeout' ? t('ec.timeout') : f('ec.err', { m: (e && e.message) || '' }), true);
       });
     });
     intro.appendChild(go); intro.appendChild(msg);
