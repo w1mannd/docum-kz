@@ -1,5 +1,5 @@
-/* docum.kz — раздел «Профиль»: данные ИП и черновики.
-   Входа нет. Всё хранится только в localStorage этого браузера и никуда не передаётся. */
+/* docum.kz — раздел «Профиль»: данные ИП и защита паролем.
+   Входа нет. Всё хранится только в этом браузере и никуда не передаётся; при защите — в зашифрованном виде. */
 (function () {
   'use strict';
   var L = window.DocumLogic, TPL = window.DocumTemplates, DR = window.DocumDrafts;
@@ -7,7 +7,8 @@
   var box = document.getElementById('profile-form');
   if (!box) return;
 
-  var values = DR.getProfile();
+  var VA = window.DocumVault;
+  var values = {};
   var msgs = {};
   var note = { text: '', cls: 'msg' };
 
@@ -69,7 +70,9 @@
       document.getElementById('f-' + first).focus();
       return;
     }
-    note = DR.saveProfile(values)
+    var okSave = DR.saveProfile(values);
+    if (okSave && VA) VA.log('profileSave');
+    note = okSave
       ? { text: t('pr.saved'), cls: 'msg' }
       : { text: t('e.draft'), cls: 'msg msg-error' };
     showNote();
@@ -95,6 +98,7 @@
       del.addEventListener('click', function () {
         if (!window.confirm(t('pr.deleteAsk'))) return;
         DR.clearProfile();
+        if (VA) VA.log('profileDel');
         values = {}; msgs = {};
         note = { text: t('pr.deleted'), cls: 'msg' };
         renderAll();
@@ -122,7 +126,93 @@
   }
 
   // Черновики перенесены в «Мои документы» → «Незаконченные».
-  function renderAll() { renderForm(); }
-  renderAll();
+  /* ---------- Защита паролем ---------- */
+  // Пароль закрывает «Профиль» и «Мои документы». Он нигде не хранится; забытый пароль восстановить нельзя.
+  var sec = document.createElement('section');
+  sec.className = 'vault-sec'; sec.id = 'security';
+  box.parentNode.appendChild(sec);
+  function pwFields(withRepeat) {
+    var wrap = el('div', 'vault-pw');
+    var a = el('input', 'input'); a.type = 'password'; a.autocomplete = 'new-password'; a.placeholder = t('va.newPw'); a.setAttribute('aria-label', t('va.newPw'));
+    var meter = el('div', 'vault-meter'); var bar = el('i'); meter.appendChild(bar);
+    var hint = el('p', 'hint', t('va.pwRules'));
+    wrap.appendChild(a); wrap.appendChild(meter); wrap.appendChild(hint);
+    var b = null;
+    if (withRepeat) { b = el('input', 'input'); b.type = 'password'; b.autocomplete = 'new-password'; b.placeholder = t('va.repeatPw'); b.setAttribute('aria-label', t('va.repeatPw')); wrap.appendChild(b); }
+    a.addEventListener('input', function () {
+      var sc = VA.strength(a.value);
+      bar.style.width = (a.value ? 10 + sc * 22.5 : 0) + '%';
+      meter.className = 'vault-meter s' + sc;
+      hint.textContent = a.value ? t('va.s' + sc) : t('va.pwRules');
+    });
+    return { node: wrap, a: a, b: b, check: function () {
+      if (a.value.length < 8) return t('va.short');
+      if (VA.strength(a.value) < 2) return t('va.weak');
+      if (b && a.value !== b.value) return t('va.mismatch');
+      return '';
+    } };
+  }
+  function renderSecurity() {
+    sec.textContent = '';
+    if (!VA || !(window.crypto && window.crypto.subtle)) return;
+    sec.appendChild(el('h2', 'section-title', t('va.title')));
+    var msg = el('p', 'msg'); msg.setAttribute('role', 'status');
+    var flashMsg = function (txt, bad) { msg.textContent = txt; msg.className = bad ? 'msg msg-error' : 'msg'; };
+    if (!VA.on()) {
+      sec.appendChild(el('p', 'lead-s', t('va.offLead')));
+      var list = el('ul', 'vault-facts');
+      ['va.f1', 'va.f2', 'va.f3', 'va.f4'].forEach(function (k) { list.appendChild(el('li', null, t(k))); });
+      sec.appendChild(list);
+      var pw = pwFields(true);
+      sec.appendChild(pw.node);
+      var agree = el('label', 'vault-agree'); var cb = el('input'); cb.type = 'checkbox';
+      agree.appendChild(cb); agree.appendChild(el('span', null, t('va.agree')));
+      sec.appendChild(agree);
+      var go = el('button', 'btn btn-primary', t('va.enable')); go.type = 'button';
+      go.addEventListener('click', function () {
+        var err = pw.check(); if (err) { flashMsg(err, true); return; }
+        if (!cb.checked) { flashMsg(t('va.agreeNeed'), true); return; }
+        go.disabled = true; flashMsg(t('va.encrypting'));
+        VA.enable(pw.a.value).then(function () { pw.a.value = pw.b.value = ''; renderSecurity(); }).catch(function () { go.disabled = false; flashMsg(t('va.fail'), true); });
+      });
+      sec.appendChild(go); sec.appendChild(msg);
+      return;
+    }
+    // Защита включена (раздел открыт — иначе вместо страницы форма входа).
+    var stRow = el('p', 'vault-on'); stRow.appendChild(el('b', null, t('va.onState'))); stRow.appendChild(document.createTextNode(' ' + t('va.onLead')));
+    sec.appendChild(stRow);
+    var lockB = el('button', 'btn btn-ghost', t('va.lockNow')); lockB.type = 'button';
+    lockB.addEventListener('click', function () { VA.lock(); setTimeout(function () { location.reload(); }, 150); });
+    sec.appendChild(lockB);
+    var det = el('details', 'vault-more');
+    det.appendChild(el('summary', null, t('va.changeTitle')));
+    var pw2 = pwFields(true);
+    det.appendChild(pw2.node);
+    var ch = el('button', 'btn btn-ghost', t('va.change')); ch.type = 'button';
+    ch.addEventListener('click', function () {
+      var err = pw2.check(); if (err) { flashMsg(err, true); return; }
+      ch.disabled = true; flashMsg(t('va.encrypting'));
+      VA.change(pw2.a.value).then(function () { flashMsg(t('va.changed')); pw2.a.value = pw2.b.value = ''; ch.disabled = false; }).catch(function () { ch.disabled = false; flashMsg(t('va.fail'), true); });
+    });
+    det.appendChild(ch);
+    sec.appendChild(det);
+    var off = el('button', 'link-btn link-danger', t('va.disable')); off.type = 'button';
+    off.addEventListener('click', function () {
+      if (!window.confirm(t('va.disableAsk'))) return;
+      flashMsg(t('va.decrypting'));
+      VA.disable().then(function () { renderSecurity(); }).catch(function () { flashMsg(t('va.fail'), true); });
+    });
+    sec.appendChild(off);
+    sec.appendChild(msg);
+  }
+
+  var loaded = false;
+  function renderAll() {
+    if (VA && VA.locked()) { VA.gate(box); sec.textContent = ''; return; }
+    if (!loaded) { values = DR.getProfile(); loaded = true; }
+    renderForm(); renderSecurity();
+  }
+  (VA ? VA.ready : Promise.resolve()).then(renderAll);
   document.addEventListener('docum:lang', renderAll);
+  document.addEventListener('docum:vault', function () { if (VA && VA.locked()) location.reload(); });
 })();

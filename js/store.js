@@ -29,20 +29,28 @@
       });
     });
   }
+  // Если включена защита паролем (js/vault.js), записи хранятся зашифрованными; здесь они прозрачно
+  // шифруются при записи и расшифровываются при чтении. Пока раздел заблокирован, чтение и запись отклоняются.
+  function V() { return root.DocumVault; }
+  function openRow(r) { return V() && r && r.vault ? V().openRec(r) : Promise.resolve(r); }
   var api = {
     all: function () {
       return tx('readonly', function (st) { return st.getAll(); }).catch(function () { return lsAll(); })
-        .then(function (list) { return (list || []).sort(function (a, b) { return b.updated - a.updated; }); });
+        .then(function (list) { return Promise.all((list || []).map(openRow)); })
+        .then(function (list) { return list.filter(Boolean).sort(function (a, b) { return b.updated - a.updated; }); });
     },
     get: function (id) {
       return tx('readonly', function (st) { return st.get(id); }).catch(function () {
         return lsAll().filter(function (r) { return r.id === id; })[0];
-      });
+      }).then(openRow);
     },
-    put: function (rec) {
-      rec.updated = Date.now();
-      return tx('readwrite', function (st) { return st.put(rec); }).catch(function () {
-        var list = lsAll().filter(function (r) { return r.id !== rec.id; }); list.push(rec); lsSave(list);
+    put: function (rec, opt) {
+      if (!(opt && opt.keep)) rec.updated = Date.now();
+      var seal = V() ? V().sealRec(rec) : Promise.resolve(rec);
+      return seal.then(function (row) {
+        return tx('readwrite', function (st) { return st.put(row); }).catch(function () {
+          var list = lsAll().filter(function (r) { return r.id !== row.id; }); list.push(row); lsSave(list);
+        });
       }).then(function () { return rec; });
     },
     del: function (id) {

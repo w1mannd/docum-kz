@@ -17,6 +17,8 @@
   function titleOf(rec) { return t('d.' + rec.code) + (rec.number ? ' № ' + rec.number : ''); }
   function last(rec) { return rec.versions[rec.versions.length - 1]; }
   function fileName(rec) { return 'docum-' + rec.code + '-' + (rec.number || rec.id.slice(0, 6)) + '-v' + last(rec).n; }
+  // Журнал действий (js/vault.js): тип события, документ, версия, статус — без персональных данных.
+  function logEv(type, data) { if (window.DocumVault) window.DocumVault.log(type, data); }
   function flash(node, text, bad) { node.textContent = text; node.className = 'msg' + (bad ? ' msg-error' : ' msg-ok'); }
 
   var query = new URLSearchParams(location.search);
@@ -39,6 +41,48 @@
     var w = el('ol', 'jr-flow');
     steps.forEach(function (s) { var li = el('li', s[1] ? 'is-on' : ''); li.appendChild(el('span', null, t('dm.flow.' + s[0]))); w.appendChild(li); });
     return w;
+  }
+  /* ---------- Журнал действий ---------- */
+  var AU_ICON = { created: '＋', version: '↻', edited: '✎', restored: '↺', deleted: '✕', dlDocx: '↓', dlPdf: '↓', dlRedline: '↓', dlSigned: '↓', dlCms: '↓',
+    shared: '↗', response: '↙', signDraw: '✍', signed: '✓', ecpImport: '✓', ocsp: '⟳', backup: '⇩', restore: '⇧',
+    vaultOn: '🔒', vaultOff: '🔓', vaultChange: '🔑', unlock: '🔓', lock: '🔒', lockIdle: '🔒', profileSave: '✎', profileDel: '✕' };
+  function auditText(e) {
+    var sv = e.s === undefined ? '' : (window.tHas && window.tHas('au.s.' + e.s) ? t('au.s.' + e.s) : String(e.s));
+    var txt = f('au.' + e.t, { n: e.n || '', s: sv, d: e.d || '' });
+    if (e.t === 'unlock' && e.s) txt = t('au.unlock') + ' · ' + f('au.fails', { s: e.s });
+    return txt;
+  }
+  function auditList(docId, limit) {
+    var VA = window.DocumVault, all = VA ? VA.readLog() : [];
+    var rows = all.filter(function (e) { return !docId || e.id === docId; }).reverse();
+    var box = el('div', 'au-box');
+    if (!rows.length) { box.appendChild(el('p', 'jr-note', t('au.empty'))); return box; }
+    var ul = el('ul', 'au-list');
+    var titles = {};
+    var draw = function (n) {
+      ul.textContent = '';
+      rows.slice(0, n).forEach(function (e) {
+        var li = el('li', 'au-item au-' + e.t);
+        li.appendChild(el('span', 'au-ico', AU_ICON[e.t] || '•'));
+        var tx = el('div', 'au-txt');
+        tx.appendChild(el('span', 'au-what', auditText(e)));
+        var meta = fmt(e.at);
+        if (!docId && e.id) meta += ' · ' + (titles[e.id] || e.d || '');
+        tx.appendChild(el('span', 'au-when', meta));
+        li.appendChild(tx);
+        ul.appendChild(li);
+      });
+    };
+    // Названия документов для общего журнала — из самих записей.
+    if (!docId) ST.all().then(function (recs) { recs.forEach(function (r) { titles[r.id] = titleOf(r); }); draw(shown); }).catch(function () { /* нет */ });
+    var shown = limit || rows.length;
+    draw(shown);
+    box.appendChild(ul);
+    if (limit && rows.length > limit) {
+      var more = btn('link-btn', f('au.more', { n: rows.length }), function () { shown = rows.length; draw(shown); more.remove(); });
+      box.appendChild(more);
+    }
+    return box;
   }
   function draftTitle(d) {
     var num = d.data && d.data.number != null ? String(d.data.number).trim() : '';
@@ -76,6 +120,12 @@
     row.appendChild(btn('btn btn-ghost', t('dm.restore'), function () { file.click(); }));
     tools.appendChild(row); tools.appendChild(file); tools.appendChild(msg);
     app.appendChild(tools);
+    // Журнал действий по всем документам и по защите раздела.
+    var audit = el('section', 'jr-backup jr-audit');
+    audit.appendChild(el('h2', null, t('au.title')));
+    audit.appendChild(el('p', 'jr-note', t('au.note')));
+    audit.appendChild(auditList(null, 15));
+    app.appendChild(audit);
 
     var all = [];
     function drawStats() {
@@ -141,7 +191,7 @@
         card.appendChild(a);
         card.appendChild(el('span', 'jr-badge jr-' + r.status, t('dm.s.' + r.status)));
         card.appendChild(flow(r));
-        var del = btn('jr-del', null, function () { if (window.confirm(t('dm.delAsk'))) ST.del(r.id).then(load); });
+        var del = btn('jr-del', null, function () { if (window.confirm(t('dm.delAsk'))) ST.del(r.id).then(function () { logEv('deleted', { id: r.id, d: titleOf(r) }); load(); }); });
         del.setAttribute('aria-label', t('dm.del') + ': ' + titleOf(r));
         del.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l.8 12.2a1 1 0 0 0 1 .8h6.4a1 1 0 0 0 1-.8L17 7"/></svg>';
         card.appendChild(del);
@@ -161,8 +211,14 @@
     search.addEventListener('input', draw);
 
     function backup() {
+      var VA = window.DocumVault;
       ST.all().then(function (rows) {
-        var blob = new Blob([JSON.stringify({ app: 'docum.kz', kind: 'journal', v: 1, at: Date.now(), docs: rows })], { type: 'application/json' });
+        // При защите паролем копия тоже зашифрована: открыть её можно только с тем же паролем.
+        var payload = { app: 'docum.kz', kind: 'journal', v: 1, at: Date.now(), docs: rows };
+        return VA && VA.on() ? VA.sealBackup({ docs: rows, log: VA.readLog() }).then(function (box) { return { app: 'docum.kz', kind: 'journal', v: 2, at: payload.at, enc: box }; }) : payload;
+      }).then(function (payload) {
+        logEv('backup', { s: payload.enc ? 'enc' : 'plain' });
+        var blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
         var a = document.createElement('a'), url = URL.createObjectURL(blob);
         a.href = url; a.download = 'docum-journal-' + new Date().toISOString().slice(0, 10) + '.json';
         document.body.appendChild(a); a.click(); a.remove();
@@ -173,10 +229,19 @@
       var fl = file.files[0]; if (!fl) return;
       fl.text().then(function (txt) {
         var d = JSON.parse(txt);
-        if (!d || d.app !== 'docum.kz' || !Array.isArray(d.docs)) throw new Error('bad');
-        var ok = d.docs.filter(function (r) { return r && r.id && r.code && TPL.DOCS[r.code] && Array.isArray(r.versions) && r.versions.length; });
-        return Promise.all(ok.map(function (r) { return ST.put(r); })).then(function () { flash(msg, f('dm.restored', { n: ok.length })); load(); });
-      }).catch(function () { flash(msg, t('dm.badFile'), true); });
+        if (!d || d.app !== 'docum.kz') throw new Error('bad');
+        if (d.enc) {
+          var VA = window.DocumVault;
+          return VA.ask(t('va.backupTitle'), t('va.backupLead')).then(function (pw) {
+            return VA.unseal(pw, d.enc).catch(function () { throw { code: 'pw' }; });
+          }).then(function (x) { return x.docs; });
+        }
+        return d.docs;
+      }).then(function (docs) {
+        if (!Array.isArray(docs)) throw new Error('bad');
+        var ok = docs.filter(function (r) { return r && r.id && r.code && TPL.DOCS[r.code] && Array.isArray(r.versions) && r.versions.length; });
+        return Promise.all(ok.map(function (r) { return ST.put(r); })).then(function () { logEv('restore', { s: ok.length }); flash(msg, f('dm.restored', { n: ok.length })); load(); });
+      }).catch(function (e) { if (e && e.code === 'cancel') return; flash(msg, t(e && e.code === 'pw' ? 'va.bad' : 'dm.badFile'), true); });
       file.value = '';
     });
     function load() {
@@ -207,7 +272,7 @@
     app.appendChild(flow(rec));
     var tabs = el('div', 'jr-tabs'); tabs.setAttribute('role', 'tablist');
     var panel = el('div', 'jr-panel');
-    [['edit', 'dm.t.edit'], ['ver', 'dm.t.ver'], ['cmp', 'dm.t.cmp'], ['share', 'dm.t.share'], ['ecp', 'dm.t.ecp']].forEach(function (x) {
+    [['edit', 'dm.t.edit'], ['ver', 'dm.t.ver'], ['cmp', 'dm.t.cmp'], ['share', 'dm.t.share'], ['ecp', 'dm.t.ecp'], ['log', 'dm.t.log']].forEach(function (x) {
       var b = btn('jr-tab', t(x[1]), function () {
         if (tab === 'edit' && dirty && x[0] !== 'edit' && !window.confirm(t('dm.unsaved'))) return;
         if (x[0] !== 'edit') dirty = false;
@@ -222,6 +287,7 @@
     else if (tab === 'ver') renderVersions(panel);
     else if (tab === 'cmp') renderCompare(panel);
     else if (tab === 'ecp') renderEcp(panel);
+    else if (tab === 'log') { var lb = el('section', 'sh-box'); lb.appendChild(el('h2', 'panel-title', t('au.docTitle'))); lb.appendChild(auditList(rec.id)); panel.appendChild(lb); }
     else renderShare(panel);
   }
 
@@ -341,11 +407,11 @@
         var prev = last(rec);
         rec.versions.push({ n: rec.versions.length + 1, at: Date.now(), blocks: blocks, data: clone(prev.data || {}), lang: prev.lang, hash: h, note: note.value.trim(), edited: true });
         if (rec.status === 'signed' || rec.status === 'sent') rec.status = 'draft';
-        return ST.put(rec).then(function () { dirty = false; note.value = ''; flash(msg, f('dm.saved', { n: rec.versions.length })); });
+        return ST.put(rec).then(function () { logEv('edited', { id: rec.id, n: rec.versions.length }); dirty = false; note.value = ''; flash(msg, f('dm.saved', { n: rec.versions.length })); });
       });
     });
-    dlD.addEventListener('click', function () { EX.downloadDocx(clone(model), fileName(rec)); });
-    dlP.addEventListener('click', function () { EX.downloadPdf(clone(model), fileName(rec)); });
+    dlD.addEventListener('click', function () { logEv('dlDocx', { id: rec.id, n: last(rec).n }); EX.downloadDocx(clone(model), fileName(rec)); });
+    dlP.addEventListener('click', function () { logEv('dlPdf', { id: rec.id, n: last(rec).n }); EX.downloadPdf(clone(model), fileName(rec)); });
   }
   window.addEventListener('beforeunload', function (e) { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
 
@@ -369,10 +435,10 @@
         acts.appendChild(btn('link-btn', t('dm.restoreV'), function () {
           var copy = clone(v); copy.n = rec.versions.length + 1; copy.at = Date.now(); copy.note = f('dm.restoredV', { a: v.n, n: copy.n });
           rec.versions.push(copy);
-          ST.put(rec).then(function () { model = null; flash(msg, copy.note); renderDoc(); });
+          ST.put(rec).then(function () { logEv('restored', { id: rec.id, n: copy.n, s: v.n }); model = null; flash(msg, copy.note); renderDoc(); });
         }));
       }
-      acts.appendChild(btn('link-btn', '.docx', function () { EX.downloadDocx(stamped(v), 'docum-' + rec.code + '-v' + v.n); }));
+      acts.appendChild(btn('link-btn', '.docx', function () { logEv('dlDocx', { id: rec.id, n: v.n }); EX.downloadDocx(stamped(v), 'docum-' + rec.code + '-v' + v.n); }));
       li.appendChild(acts);
       list.appendChild(li);
     });
@@ -413,6 +479,7 @@
     tools.appendChild(btn('ed-btn', '↑ ' + t('dm.prev'), function () { go(-1); }));
     tools.appendChild(btn('ed-btn', '↓ ' + t('dm.next'), function () { go(1); }));
     tools.appendChild(btn('btn btn-ghost', t('dm.redline'), function () {
+      logEv('dlRedline', { id: rec.id, n: B.n, s: A.n });
       EX.downloadRedline(res, 'docum-' + rec.code + '-v' + A.n + '-v' + B.n, { title: titleOf(rec) + ': ' + f('dm.ver', { n: A.n }) + ' → ' + f('dm.ver', { n: B.n }) });
     }));
     panel.appendChild(tools);
@@ -505,6 +572,7 @@
         rec.shares = rec.shares || [];
         rec.shares.push({ at: Date.now(), n: v.n, mode: mode });
         if (rec.status !== 'signed') rec.status = 'sent';
+        logEv('shared', { id: rec.id, n: v.n, s: mode });
         ST.put(rec);
       });
     });
@@ -535,6 +603,7 @@
       window.DocumSign.pad(padHost, function (s) {
         rec.signs = rec.signs || [];
         rec.signs.push({ who: 'self', name: s.name, strokes: s.strokes, at: s.at, n: v.n, hash: v.hash, ok: true });
+        logEv('signDraw', { id: rec.id, n: v.n });
         ST.put(rec).then(renderDoc);
       });
     });
@@ -571,10 +640,11 @@
   // kind 'cms' — CMS с PDF внутри (.cms); 'pades' — отсоединённая CMS внутри PDF, content — подписанные байты PDF.
   var PA = window.DocumPades;
   // PDF для PAdES: версия и, если есть, штамп ЭЦП внутри подписываемого содержимого.
-  function padesOf(v, stampB) {
+  function padesOf(v, stampB, reserve) {
     var bytes = stampB ? EX.pdfBytes(v.blocks.concat([stampB]), v.at) : pdfOf(v);
-    return bytes.then(function (pdf) { return PA.prepare(pdf, v.at); });
+    return bytes.then(function (pdf) { return PA.prepare(pdf, v.at, reserve); });
   }
+  var TSP_RESERVE = 32768;   // место под подпись с меткой времени и сертификатами НУЦ
   function ecpRecord(cmsB64, who, opt) {
     opt = opt || {};
     var kind = opt.kind || 'cms';
@@ -588,19 +658,42 @@
         if (i >= vs.length) return Promise.resolve(null);
         var v = vs[i++];
         return pdfOf(v).then(function (pdf) {
-          var prep = kind === 'pades' ? (opt.stamp ? padesOf(v, opt.stamp) : Promise.resolve(PA.prepare(pdf, v.at))) : null;
+          var prep = kind === 'pades' ? (opt.stamp ? padesOf(v, opt.stamp, opt.reserve) : Promise.resolve(PA.prepare(pdf, v.at, opt.reserve))) : null;
           return Promise.resolve(prep).then(function (pp) { return Promise.all([sha(pp ? pp.toSign : pdf), sha(pdf)]); });
         }).then(function (h) { if (h[0] === ch) { plain = h[1]; return v.n; } return next(); });
       }
-      return next().then(function (n) {
-        var inf = p.info, t0 = p.attrs.time || Date.now();
-        return { who: who, kind: kind, at: Date.now(), n: n, cms: cmsB64, contentHash: plain || ch, serial: inf.serial || '', stamp: opt.stamp || null,
+      // Отзыв сертификата проверяется в НУЦ сразу; в запрос уходят только хэши и номер сертификата.
+      return Promise.all([next(), E.ocsp(p.info)]).then(function (nr) {
+        var n = nr[0], inf = p.info;
+        // Срок сертификата сверяется со временем подписи: по метке времени НУЦ, если она есть.
+        var t0 = (p.tsp && p.tsp.time) || p.attrs.time || Date.now();
+        return { who: who, kind: kind, at: Date.now(), n: n, cms: cmsB64, contentHash: plain || ch, serial: inf.serial || '', stamp: opt.stamp || null, reserve: opt.reserve || null,
+          tsp: p.tsp ? { time: p.tsp.time, tsa: p.tsp.tsa, check: res.tsp } : null, ocsp: nr[1],
           cn: (inf.subject || {}).cn || '', given: (inf.subject || {}).given || '', iin: inf.iin || '', bin: inf.bin || '', org: (inf.subject || {}).org || '',
           issuer: (inf.issuer || {}).cn || '', from: inf.notBefore, to: inf.notAfter, time: p.attrs.time || null,
           alg: E.alg(p.sigAlg).n + ' / ' + E.alg(p.digestAlg).n, digest: res.digest, crypto: res.crypto, gost: res.gost,
           valid: inf.notBefore && inf.notAfter ? (t0 >= inf.notBefore && t0 <= inf.notAfter) : null };
       });
     });
+  }
+  // Метка времени: есть ли и относится ли к этой подписи.
+  function tspView(r) {
+    if (!r.tsp) return ['skip', t('ec.tspNone')];
+    if (r.tsp.check === 'fail') return ['fail', t('ec.tspBad')];
+    return ['ok', f(r.tsp.check === 'ok' ? 'ec.tspOk' : 'ec.tspGost', { d: fmt(r.tsp.time) })];
+  }
+  // Отзыв сертификата по ответу НУЦ; отзыв после метки времени подпись не портит.
+  function ocspView(r) {
+    var o = r.ocsp;
+    if (!o) return ['skip', t('ec.ocspNone')];
+    if (o.status === 'good') return ['ok', f('ec.ocspGood', { d: fmt(o.at) })];
+    if (o.status === 'revoked') {
+      if (r.tsp && r.tsp.time && o.revokedAt && r.tsp.time < o.revokedAt) return ['ok', f('ec.ocspRevAfter', { d: fdate(o.revokedAt) })];
+      return ['fail', f('ec.ocspRev', { d: o.revokedAt ? fdate(o.revokedAt) : '?' })];
+    }
+    if (o.status === 'unknown') return ['fail', t('ec.ocspUnknown')];
+    if (o.status === 'notNuc') return ['skip', t('ec.ocspNotNuc')];
+    return ['skip', t('ec.ocspErr')];
   }
   var justSigned = -1;
   function renderEcp(panel) {
@@ -625,15 +718,16 @@
       // Штамп (отметка и время) входит в PDF до подписи, NCALayer подписывает этот PDF один раз,
       // подпись встаёт внутрь файла (PAdES). Получается один PDF: и штамп, и настоящая подпись.
       var prep = null, stampB = E.stamp({ time: Date.now() }, v.lang || rec.lang);
-      padesOf(v, stampB).then(function (pp) {
+      padesOf(v, stampB, TSP_RESERVE).then(function (pp) {
         prep = pp;
         flash(msg, t('ec.confirm'));
         return E.sign(E.b64(prep.toSign), true);
       }).then(function (cms) {
-        return ecpRecord(cms, 'self', { kind: 'pades', content: prep.toSign, stamp: stampB });
+        return ecpRecord(cms, 'self', { kind: 'pades', content: prep.toSign, stamp: stampB, reserve: TSP_RESERVE });
       }).then(function (r) {
         rec.ecp = rec.ecp || []; rec.ecp.push(r); rec.status = 'signed';
         justSigned = rec.ecp.length - 1;
+        logEv('signed', { id: rec.id, n: r.n, s: r.tsp ? 'tsp' : '' });
         return ST.put(rec).then(function () { renderDoc(); });
       }).catch(function (e) {
         go.disabled = false;
@@ -660,7 +754,11 @@
       var dl = el('dl', 'ecp-dl');
       var row = function (k, val) { if (!val) return; dl.appendChild(el('dt', null, t(k))); dl.appendChild(el('dd', null, val)); };
       row('ec.iin', r.iin); row('ec.bin', r.bin); row('ec.issuer', r.issuer);
-      row('ec.valid', fdate(r.from) + ' — ' + fdate(r.to)); row('ec.time', r.time ? fmt(r.time) : ''); row('ec.alg', r.alg);
+      row('ec.valid', fdate(r.from) + ' — ' + fdate(r.to));
+      // Время подписи: по метке времени НУЦ (не подделать) или по часам компьютера подписанта.
+      if (r.tsp && r.tsp.time) row('ec.time', fmt(r.tsp.time) + ' · ' + t('ec.byTsp') + (r.tsp.tsa ? ' (' + r.tsp.tsa + ')' : ''));
+      else row('ec.time', r.time ? fmt(r.time) + ' · ' + t('ec.byClock') : '');
+      row('ec.alg', r.alg);
       card.appendChild(dl);
       var checks = el('ul', 'ecp-checks');
       var ck = function (state, text) { var li = el('li', 'is-' + state); li.appendChild(el('span', null, text)); checks.appendChild(li); };
@@ -668,14 +766,28 @@
       ck(r.digest === 'ok' ? 'ok' : r.digest === 'fail' ? 'fail' : 'skip', r.digest === 'ok' ? t('ec.digOk') : r.digest === 'fail' ? t('ec.digBad') : t('ec.digSkip'));
       ck(r.crypto === 'ok' ? 'ok' : r.crypto === 'fail' ? 'fail' : 'skip', r.crypto === 'ok' ? t('ec.cryOk') : r.crypto === 'fail' ? t('ec.cryBad') : t('ec.crySkip'));
       ck(r.valid === true ? 'ok' : r.valid === false ? 'fail' : 'skip', r.valid === true ? t('ec.certOk') : r.valid === false ? t('ec.certBad') : t('ec.certSkip'));
+      var tv = tspView(r); ck(tv[0], tv[1]);
+      var ov = ocspView(r); ck(ov[0], ov[1]);
       card.appendChild(checks);
+      var recheck = btn('link-btn ecp-recheck', t('ec.ocspAgain'), function () {
+        recheck.disabled = true; recheck.textContent = t('ec.ocspChecking');
+        var info = null;
+        try { info = E.parse(E.unb64(r.cms)).info; } catch (e) { info = null; }
+        E.ocsp(info).then(function (o) {
+          r.ocsp = o;
+          logEv('ocsp', { id: rec.id, n: r.n, status: o.status });
+          return ST.put(rec);
+        }).then(renderDoc);
+      });
+      card.appendChild(recheck);
       var v = r.n ? rec.versions[r.n - 1] : null;
       var acts = el('div', 'ecp-dls');
       var base = fileName(rec).replace(/-v\d+$/, '') + (v ? '-v' + v.n : '') + '-ecp' + (i + 1);
       if (r.kind === 'pades' && v) {
         var padBtn = btn('btn btn-primary', '', function () {
           padBtn.disabled = true;
-          padesOf(v, r.stamp).then(function (pp) {
+          padesOf(v, r.stamp, r.reserve).then(function (pp) {
+            logEv('dlSigned', { id: rec.id, n: v.n });
             EX.saveBlob(new Blob([PA.embed(pp, E.unb64(r.cms))], { type: 'application/pdf' }), base + '-signed.pdf');
           }).then(function () { padBtn.disabled = false; }, function () { padBtn.disabled = false; });
         });
@@ -684,6 +796,7 @@
         acts.appendChild(padBtn);
       } else {
         var cmsBtn = btn('btn btn-primary', '', function () {
+          logEv('dlCms', { id: rec.id, n: r.n });
           EX.saveBlob(new Blob([E.unb64(r.cms)], { type: 'application/pkcs7-signature' }), base + '.cms');
         });
         cmsBtn.appendChild(el('b', null, t('ec.dlCms')));
@@ -703,7 +816,7 @@
         acts.appendChild(pdfBtn);
       }
       if (v) {
-        var docBtn = btn('btn btn-ghost', '', function () { EX.downloadDocx(stamped(v), base + '-stamp'); });
+        var docBtn = btn('btn btn-ghost', '', function () { logEv('dlDocx', { id: rec.id, n: v.n }); EX.downloadDocx(stamped(v), base + '-stamp'); });
         docBtn.appendChild(el('b', null, t('ec.dlDocx')));
         docBtn.appendChild(el('small', null, t('ec.dlDocxSub')));
         acts.appendChild(docBtn);
@@ -740,7 +853,7 @@
       }).then(function (rs) {
         if (!rs) return;
         rec.ecp = rec.ecp || [];
-        rs.forEach(function (r) { rec.ecp.push(r); });
+        rs.forEach(function (r) { rec.ecp.push(r); logEv('ecpImport', { id: rec.id, n: r.n }); });
         return ST.put(rec).then(renderDoc);
       }).catch(function () { flash(impMsg, t('ec.badFile'), true); });
       file.value = '';
@@ -751,12 +864,18 @@
     panel.appendChild(el('p', 'sign-legal', t('ec.legal')));
   }
 
-  if (id) {
-    ST.get(id).then(function (r) {
-      if (!r) { renderList(); return; }
-      rec = r; renderDoc();
-    });
-  } else renderList();
+  // При защите паролем раздел открывается только после ввода пароля.
+  var VA = window.DocumVault;
+  (VA ? VA.ready : Promise.resolve()).then(function () {
+    if (VA && VA.locked()) { VA.gate(app); return; }
+    if (id) {
+      ST.get(id).then(function (r) {
+        if (!r) { renderList(); return; }
+        rec = r; renderDoc();
+      });
+    } else renderList();
+  });
+  document.addEventListener('docum:vault', function () { if (VA && VA.locked()) location.reload(); });
 
-  document.addEventListener('docum:lang', function () { if (rec) renderDoc(); else renderList(); });
+  document.addEventListener('docum:lang', function () { if (VA && VA.locked()) { VA.gate(app); return; } if (rec) renderDoc(); else renderList(); });
 })();

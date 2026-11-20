@@ -1,11 +1,16 @@
 /* docum.kz — черновики и данные профиля. Хранятся только в localStorage этого браузера и никуда не передаются.
-   И то и другое появляется, лишь когда пользователь сам нажимает кнопку сохранения. */
+   Черновик сохраняется сам во время заполнения, профиль — кнопкой. При защите паролем — в зашифрованном виде. */
 (function (root) {
   'use strict';
   var KEY = 'docum-drafts', PROFILE_KEY = 'docum-profile';
   // В профиль входят только данные самого ИП. Документ, удостоверяющий личность, не хранится.
   var PROFILE_FIELDS = ['ip_name', 'ip_fio', 'ip_iin', 'ip_addr', 'ip_contact', 'ip_iik', 'ip_bank', 'ip_bik'];
   var TPL = root.DocumTemplates;
+  // Чтение и запись через js/vault.js: при включённой защите паролем эти данные хранятся зашифрованными.
+  function V() { return root.DocumVault; }
+  function getItem(k) { return V() ? V().getItem(k) : root.localStorage.getItem(k); }
+  function setItem(k, v) { if (V()) V().setItem(k, v); else root.localStorage.setItem(k, v); }
+  function removeItem(k) { if (V()) V().removeItem(k); else root.localStorage.removeItem(k); }
 
   // Данные из хранилища не считаем надёжными: оставляем только известные поля нужного типа.
   function sanitize(draft) {
@@ -33,14 +38,14 @@
 
   function list() {
     try {
-      var raw = JSON.parse(root.localStorage.getItem(KEY) || '[]');
+      var raw = JSON.parse(getItem(KEY) || '[]');
       if (!Array.isArray(raw)) return [];
       return raw.map(sanitize).filter(Boolean).sort(function (a, b) { return b.savedAt - a.savedAt; });
     } catch (e) { return []; }
   }
 
   function write(items) {
-    root.localStorage.setItem(KEY, JSON.stringify(items));
+    setItem(KEY, JSON.stringify(items));
   }
 
   // Возвращает id черновика либо null, если браузер не дал сохранить.
@@ -63,7 +68,7 @@
   }
 
   function clear() {
-    try { root.localStorage.removeItem(KEY); return true; } catch (e) { return false; }
+    try { removeItem(KEY); return true; } catch (e) { return false; }
   }
 
   function fmtSaved(ms) {
@@ -75,7 +80,7 @@
   function getProfile() {
     var out = {};
     try {
-      var raw = JSON.parse(root.localStorage.getItem(PROFILE_KEY) || '{}');
+      var raw = JSON.parse(getItem(PROFILE_KEY) || '{}');
       PROFILE_FIELDS.forEach(function (k) {
         if (raw && typeof raw[k] === 'string' && raw[k].trim()) out[k] = raw[k];
       });
@@ -84,7 +89,7 @@
   }
   function hasProfile() { return Object.keys(getProfile()).length > 0; }
   function clearProfile() {
-    try { root.localStorage.removeItem(PROFILE_KEY); return true; } catch (e) { return false; }
+    try { removeItem(PROFILE_KEY); return true; } catch (e) { return false; }
   }
   function saveProfile(values) {
     var out = {};
@@ -92,8 +97,8 @@
       if (typeof values[k] === 'string' && values[k].trim()) out[k] = values[k].trim();
     });
     try {
-      if (Object.keys(out).length) root.localStorage.setItem(PROFILE_KEY, JSON.stringify(out));
-      else root.localStorage.removeItem(PROFILE_KEY);
+      if (Object.keys(out).length) setItem(PROFILE_KEY, JSON.stringify(out));
+      else removeItem(PROFILE_KEY);
       return true;
     } catch (e) { return false; }
   }

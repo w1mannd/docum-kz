@@ -6,7 +6,7 @@
 (function (root) {
   'use strict';
 
-  var RESERVE = 16384;   // байт под подпись: CMS с цепочкой сертификатов НУЦ занимает 2–8 КБ
+  var RESERVE = 16384;   // байт под подпись по умолчанию (подписи без метки времени); с меткой времени НУЦ — 32768
 
   function dec(u8) { var s = ''; for (var i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return s; }
   function enc(str) { var u = new Uint8Array(str.length); for (var i = 0; i < str.length; i++) u[i] = str.charCodeAt(i) & 255; return u; }
@@ -51,7 +51,8 @@
   }
 
   // PDF версии → PDF с пустым полем подписи и байты, которые нужно подписать.
-  function prepare(pdf, at) {
+  function prepare(pdf, at, reserve) {
+    var R = reserve || RESERVE;
     var s = dec(pdf);
     var tIdx = s.lastIndexOf('trailer');
     var sx = s.match(/startxref\s+(\d+)\s*%%EOF\s*$/);
@@ -68,7 +69,7 @@
     var newPage = /\/Annots\s*\[/.test(page)
       ? page.replace(/\/Annots\s*\[/, '/Annots [' + widId + ' 0 R ')
       : page.slice(0, -2) + '/Annots [' + widId + ' 0 R]\n>>';
-    var zeros = new Array(RESERVE * 2 + 1).join('0');
+    var zeros = new Array(R * 2 + 1).join('0');
     var objs = [
       [rootId, newCat],
       [pageId, newPage],
@@ -87,16 +88,16 @@
 
     var bytes = concat(pdf, enc(out));
     var a = pdf.length + out.indexOf('/Contents <') + '/Contents '.length;   // позиция «<»
-    var b = a + RESERVE * 2 + 2;                                               // сразу после «>»
+    var b = a + R * 2 + 2;                                               // сразу после «>»
     var br = [0, a, b, bytes.length - b].map(function (n, i) { return i ? pad(n, 10, ' ') : '0'; });
     var brAt = pdf.length + out.indexOf('[0 ##########') + 1;
     bytes.set(enc(br.join(' ')), brAt);
-    return { bytes: bytes, a: a, b: b, toSign: concat(bytes.subarray(0, a), bytes.subarray(b)) };
+    return { reserve: R, bytes: bytes, a: a, b: b, toSign: concat(bytes.subarray(0, a), bytes.subarray(b)) };
   }
 
   // Вписать CMS в подготовленный PDF.
   function embed(prep, cms) {
-    if (cms.length > RESERVE) throw new Error('pdf-sig-big');
+    if (cms.length > (prep.reserve || RESERVE)) throw new Error('pdf-sig-big');
     var hex = '';
     for (var i = 0; i < cms.length; i++) hex += pad(cms[i].toString(16), 2);
     var out = new Uint8Array(prep.bytes);

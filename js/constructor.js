@@ -77,7 +77,29 @@
     var st = el('p', 'msg draft-auto', state.draftNote || t('b.draftAuto'));
     st.id = 'draft-status';
     st.setAttribute('role', 'status');
+    if (locked()) lockedNote(st, 'va.draftLocked');
     return st;
+  }
+  // Защита паролем (js/vault.js): пока «Профиль» и «Мои документы» закрыты, конструктор работает,
+  // но данные ИП не подставляются, а черновик и готовый документ не сохраняются. Пароль — по кнопке.
+  var VA = window.DocumVault;
+  function locked() { return !!(VA && VA.locked()); }
+  function logEv(type, data) { if (VA) VA.log(type, data); }
+  function askUnlock() {
+    VA.prompt().then(function () {
+      // Подставить данные профиля в пустые поля и сохранить то, что не сохранилось.
+      var profile = DR.getProfile();
+      Object.keys(profile).forEach(function (id) { if (id in state.data && L.isEmpty(state.data[id])) { state.data[id] = profile[id]; state.prefilled[id] = true; } });
+      render();
+      if (isReview()) saveToJournal(); else saveDraft();
+    }, function () { /* отмена */ });
+  }
+  function lockedNote(node, textKey) {
+    node.textContent = '';
+    node.className = 'msg draft-auto is-locked';
+    node.appendChild(document.createTextNode(t(textKey) + ' '));
+    var b = el('button', 'link-btn', t('va.unlock')); b.type = 'button'; b.addEventListener('click', askUnlock);
+    node.appendChild(b);
   }
   var draftTimer = 0;
   function scheduleDraft() {
@@ -87,8 +109,9 @@
   function saveDraft() {
     if (!state.code || isReview() || state.journalId) return;
     if (!state.draftId && state.base === JSON.stringify(state.data) && state.step === 0) return;   // ещё ничего не введено
-    var id = DR.save(state.draftId, state.code, state.step, state.data, state.docLang);
     var st = document.getElementById('draft-status');
+    if (locked()) { if (st) lockedNote(st, 'va.draftLocked'); return; }
+    var id = DR.save(state.draftId, state.code, state.step, state.data, state.docLang);
     if (id) {
       state.draftId = id;
       state.draftNote = t('b.draftDone') + ' ' + DR.fmtSaved(Date.now());
@@ -732,6 +755,7 @@
   function saveNow() {
     var ST = window.DocumStore;
     if (!ST || !state.code) return Promise.resolve(null);
+    if (locked()) { var mk = document.getElementById('j-status'); if (mk) { mk.removeAttribute('href'); lockedNote(mk.querySelector('span') || mk, 'va.saveLocked'); } return Promise.resolve(null); }
     var blocks = TPL.build(state.code, state.data, state.docLang);
     var data = JSON.parse(JSON.stringify(state.data));
     return ST.hash(ST.text(blocks)).then(function (h) {
@@ -751,11 +775,13 @@
           state.ownVer = rec.versions.length + 1;
           rec.versions.push({ n: rec.versions.length + 1, at: Date.now(), blocks: blocks, data: data, lang: state.docLang, hash: h, note: '' });
           rec.number = data.number || rec.number;
+          logEv('version', { id: rec.id, n: rec.versions.length });
           return ST.put(rec);
         }
         state.ownVer = 1;
         rec = { id: ST.newId(), code: state.code, lang: state.docLang, number: data.number || '', created: Date.now(), status: 'final',
           versions: [{ n: 1, at: Date.now(), blocks: blocks, data: data, lang: state.docLang, hash: h, note: '' }], shares: [], signs: [] };
+        logEv('created', { id: rec.id, n: 1 });
         return ST.put(rec);
       });
     }).then(function (rec) {
@@ -775,6 +801,7 @@
     var label = btn.textContent;
     btn.disabled = true; btn.textContent = t('b.preparing');
     status.textContent = ''; status.className = 'msg';
+    logEv(kind === 'docx' ? 'dlDocx' : 'dlPdf', state.journalId ? { id: state.journalId } : null);
     (kind === 'docx' ? EX.downloadDocx(blocks, name) : EX.downloadPdf(blocks, name)).catch(function (e) {
       if (window.console) console.error(e);
       status.textContent = t('e.download');
@@ -788,24 +815,32 @@
   root.addEventListener('change', function () { if (state.code && !isReview()) scheduleDraft(); });
 
   /* ---------- Запуск ---------- */
-  var query = new URLSearchParams(location.search);
-  var code = query.get('doc'), draft = query.get('draft') ? DR.get(query.get('draft')) : null;
-  var jid = query.get('journal');
-  if (jid && window.DocumStore) {
-    // «Изменить данные в конструкторе»: последняя версия из журнала открывается на шаге проверки.
-    window.DocumStore.get(jid).then(function (rec) {
-      if (!rec || !TPL.DOCS[rec.code]) { render(); return; }
-      var last = rec.versions[rec.versions.length - 1];
-      openDraft({ code: rec.code, step: TPL.DOCS[rec.code].steps.length, data: JSON.parse(JSON.stringify(last.data || {})), lang: last.lang || rec.lang });
-      state.draftId = null; state.draftNote = ''; state.journalId = rec.id;
-      // Пока данные не изменены, это та же версия журнала (даже если её правили в редакторе).
-      state.opened = JSON.stringify([state.data, state.docLang]);
-      render();
-    }).catch(function () { render(); });
+  // Сначала — расшифровка профиля и черновиков (если включена защита паролем), потом первая отрисовка.
+  function launch() {
+    var query = new URLSearchParams(location.search);
+    var code = query.get('doc'), draft = query.get('draft') ? DR.get(query.get('draft')) : null;
+    var jid = query.get('journal');
+    if (jid && window.DocumStore) {
+      // «Изменить данные в конструкторе»: последняя версия из журнала открывается на шаге проверки.
+      window.DocumStore.get(jid).then(function (rec) {
+        if (!rec || !TPL.DOCS[rec.code]) { render(); return; }
+        var last = rec.versions[rec.versions.length - 1];
+        openDraft({ code: rec.code, step: TPL.DOCS[rec.code].steps.length, data: JSON.parse(JSON.stringify(last.data || {})), lang: last.lang || rec.lang });
+        state.draftId = null; state.draftNote = ''; state.journalId = rec.id;
+        // Пока данные не изменены, это та же версия журнала (даже если её правили в редакторе).
+        state.opened = JSON.stringify([state.data, state.docLang]);
+        render();
+      }).catch(function (e) {
+        if (e && e.code === 'locked') { VA.prompt().then(function () { location.reload(); }, function () { render(); }); return; }
+        render();
+      });
+    }
+    else if (query.get('draft') && locked()) VA.prompt().then(function () { location.reload(); }, function () { render(); });
+    else if (draft) openDraft(draft);
+    else if (code && TPL.DOCS[code]) start(code);
+    else render();
   }
-  else if (draft) openDraft(draft);
-  else if (code && TPL.DOCS[code]) start(code);
-  else render();
+  (VA ? VA.ready : Promise.resolve()).then(launch);
 
   document.addEventListener('docum:lang', function () {
     if (!state.docLangSet) state.docLang = window.getLang();

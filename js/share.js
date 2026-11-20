@@ -198,7 +198,7 @@
     card.appendChild(info);
     app.appendChild(card);
     integ.textContent = f('sp.hash', { h: (p.hash || '').slice(0, 16) + '…' });
-    ST.get(p.id).then(function (rec) {
+    ST.get(p.id).catch(function () { return null; }).then(function (rec) {
       var blocks = ST.responseBlocks(p, rec);
       if (!blocks) return;
       ST.hash(ST.text(blocks)).then(function (h) { if (h !== p.hash) app.insertBefore(el('p', 'notice notice-warn', t('sp.altered')), card); });
@@ -206,12 +206,15 @@
     });
     var msg = el('p', 'msg');
     var add = btn('btn btn-primary', t('sp.addJ'), function () {
-      ST.importResponse(p).then(function (r) {
+      // При защите паролем журнал сначала нужно открыть.
+      var VA = window.DocumVault;
+      (VA && VA.locked() ? VA.prompt() : Promise.resolve()).then(function () { return ST.importResponse(p); }).then(function (r) {
         msg.textContent = '';
         if (!r) { msg.textContent = t('sp.bad'); return; }
+        if (VA) VA.log('response', { id: r.id, s: p.ecp ? 'ecp' : p.mode });
         var a = el('a', null, t('sp.added')); a.href = 'documents.html?id=' + r.id; msg.appendChild(a);
         add.disabled = true;
-      });
+      }, function (e) { if (!(e && e.code === 'cancel')) msg.textContent = t('sp.bad'); });
     });
     app.appendChild(add); app.appendChild(msg);
     app.appendChild(el('p', 'sign-legal', t('dm.legal')));

@@ -52,7 +52,8 @@
       args: {
         allowedStorages: ['PKCS12', 'AKKaztokenStore', 'AKKZIDCardStore', 'AKEToken72KStore', 'AKEToken5110Store', 'AKJaCartaStore', 'AKAKEYStore'],
         format: 'cms', data: base64,
-        signingParams: { decode: true, encapsulate: !detached, digested: false },
+        // tsaProfile: {} — NCALayer запрашивает у НУЦ (tsp.pki.gov.kz) метку времени и кладёт её в подпись.
+        signingParams: { decode: true, encapsulate: !detached, digested: false, tsaProfile: {} },
         signerParams: { extKeyUsageOids: ['1.3.6.1.5.5.7.3.4'], chain: [] },
         locale: (root.getLang && root.getLang() === 'kk') ? 'kk' : 'ru'
       }
@@ -137,14 +138,55 @@
   function certInfo(b, cert) {
     var t = cert.kids[0].kids, q = t[0].cls === 2 ? 1 : 0;
     var subj = name(b, t[q + 4]), iss = name(b, t[q + 2]);
+    var ex = exts(b, t), aia = aiaOf(ex['1.3.6.1.5.5.7.1.1']), aki = akiOf(ex['2.5.29.35']);
     return {
       serial: hex(bytes(b, t[q])), subject: subj, issuer: iss,
       notBefore: time(b, t[q + 3].kids[0]), notAfter: time(b, t[q + 3].kids[1]),
       spki: raw(b, t[q + 5]), keyAlg: oid(b, t[q + 5].kids[0].kids[0]),
-      iin: (subj.serial || '').replace(/^IIN/i, ''), bin: (subj.ou || '').replace(/^BIN/i, '')
+      iin: (subj.serial || '').replace(/^IIN/i, ''), bin: (subj.ou || '').replace(/^BIN/i, ''),
+      // Для проверки отзыва (OCSP): адреса служб НУЦ из сертификата, имя издателя и номер — в виде байтов DER.
+      ocspUrl: aia.ocsp, caUrl: aia.ca, aki: aki, issuerRaw: new Uint8Array(raw(b, t[q + 2])), serialRaw: new Uint8Array(bytes(b, t[q]))
     };
   }
   function cert(der) { return certInfo(der, node(der, 0)); }
+  // Расширения сертификата: { OID: значение (байты) }.
+  function exts(b, t) {
+    var out = {};
+    t.forEach(function (x) {
+      if (x.cls === 2 && x.num === 3 && x.kids && x.kids[0]) x.kids[0].kids.forEach(function (e) { out[oid(b, e.kids[0])] = new Uint8Array(bytes(b, e.kids[e.kids.length - 1])); });
+    });
+    return out;
+  }
+  function aiaOf(v) {
+    var out = {};
+    if (!v) return out;
+    try {
+      node(v, 0).kids.forEach(function (ad) {
+        var m = oid(v, ad.kids[0]), u = ad.kids[1];
+        if (u.tag !== 0x86) return;
+        if (m === '1.3.6.1.5.5.7.48.1' && !out.ocsp) out.ocsp = str(v, u);
+        if (m === '1.3.6.1.5.5.7.48.2' && !out.ca) out.ca = str(v, u);
+      });
+    } catch (e) { /* нет */ }
+    return out;
+  }
+  function akiOf(v) {
+    if (!v) return null;
+    try { var k = node(v, 0).kids.filter(function (x) { return x.tag === 0x80; })[0]; return k ? new Uint8Array(bytes(v, k)) : null; } catch (e) { return null; }
+  }
+  // Метка времени (RFC 3161) из неподписанных атрибутов подписи: время НУЦ и отпечаток подписи.
+  function tstOf(b, tok) {
+    var sd = tok.kids[1].kids[0], enc = sd.kids[2], der = octets(b, enc.kids[1].kids[0]);
+    var k = node(der, 0).kids;
+    var out = { time: time(der, k[4]), alg: oid(der, k[2].kids[0].kids[0]), imprint: new Uint8Array(bytes(der, k[2].kids[1])), tsa: '' };
+    sd.kids.forEach(function (x) {
+      if (x.cls === 2 && x.num === 0 && !out.tsa) x.kids.forEach(function (c) {
+        try { var i = certInfo(b, c); if (!out.tsa && /TSA|TSP|УАҚЫТ|ВРЕМ/i.test(i.subject.cn || '')) out.tsa = i.subject.cn; } catch (e) { /* нет */ }
+      });
+    });
+    if (!out.tsa) sd.kids.forEach(function (x) { if (x.cls === 2 && x.num === 0 && !out.tsa) { try { out.tsa = certInfo(b, x.kids[0]).subject.cn || ''; } catch (e) { /* нет */ } } });
+    return out;
+  }
   function parse(cms) {
     var b = cms instanceof Uint8Array ? cms : new Uint8Array(cms);
     var ci = node(b, 0);
@@ -161,7 +203,10 @@
     var si = k[i].kids[0], s = si.kids, j = 1;
     var sid = s[j++], digestAlg = oid(b, s[j++].kids[0]), signedAttrs = null;
     if (s[j].cls === 2 && s[j].num === 0) signedAttrs = s[j++];
-    var sigAlg = oid(b, s[j++].kids[0]), signature = bytes(b, s[j++]);
+    var sigAlg = oid(b, s[j++].kids[0]), signature = bytes(b, s[j++]), tsp = null;
+    if (s[j] && s[j].cls === 2 && s[j].num === 1) s[j].kids.forEach(function (a) {
+      if (oid(b, a.kids[0]) === '1.2.840.113549.1.9.16.2.14') { try { tsp = tstOf(b, a.kids[1].kids[0]); } catch (e) { tsp = null; } }
+    });
     var serial = sid.tag === 0x30 ? hex(bytes(b, sid.kids[1])) : null;
     var cert = certs.filter(function (c) { return hex(bytes(b, c.kids[0].kids[c.kids[0].kids[0].cls === 2 ? 1 : 0])) === serial; })[0] || certs[0];
     var info = cert ? certInfo(b, cert) : {}, attrs = {};
@@ -170,13 +215,21 @@
       if (id === '1.2.840.113549.1.9.4') attrs.digest = bytes(b, v);
       if (id === '1.2.840.113549.1.9.5') attrs.time = time(b, v);
     });
-    return { content: content, info: info, attrs: attrs, digestAlg: digestAlg, sigAlg: sigAlg, signature: signature,
+    return { content: content, info: info, attrs: attrs, digestAlg: digestAlg, sigAlg: sigAlg, signature: signature, tsp: tsp,
       signedAttrs: signedAttrs ? raw(b, signedAttrs) : null, certCount: certs.length };
   }
 
   // Проверка: (1) отпечаток содержимого совпадает с атрибутом подписи; (2) для RSA — подпись по открытому ключу сертификата.
   function verify(p) {
-    var subtle = root.crypto && root.crypto.subtle, d = alg(p.digestAlg), res = { digest: 'skip', crypto: 'skip', gost: !d.web };
+    var subtle = root.crypto && root.crypto.subtle;
+    // Метка времени относится именно к этой подписи, если в ней отпечаток значения подписи.
+    var ta = p.tsp ? alg(p.tsp.alg) : null;
+    var tspCheck = !p.tsp ? Promise.resolve('none') : (!subtle || !ta.web) ? Promise.resolve('skip')
+      : subtle.digest(ta.web, p.signature).then(function (h) { return hex(new Uint8Array(h)) === hex(p.tsp.imprint) ? 'ok' : 'fail'; }, function () { return 'skip'; });
+    return tspCheck.then(function (tc) { return verifyCore(p, tc); });
+  }
+  function verifyCore(p, tc) {
+    var subtle = root.crypto && root.crypto.subtle, d = alg(p.digestAlg), res = { digest: 'skip', crypto: 'skip', gost: !d.web, tsp: tc };
     if (!subtle || !d.web || !p.content) return Promise.resolve(res);
     return subtle.digest(d.web, p.content).then(function (h) {
       res.digest = p.attrs.digest ? (hex(new Uint8Array(h)) === hex(p.attrs.digest) ? 'ok' : 'fail') : 'skip';
@@ -192,6 +245,81 @@
 
   function b64(u8) { var s = ''; for (var i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); }
   function unb64(s) { var bin = atob(clean(s)), out = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i); return out; }
+
+  /* ---------- Проверка отзыва сертификата (OCSP НУЦ) ---------- */
+  // Запрос собирается здесь, в браузере: хэш имени издателя, хэш его ключа и серийный номер сертификата.
+  // На сервер docum.kz (api/pki.js) уходит только этот запрос — без ФИО, ИИН и документа; сервер передаёт его в ocsp.pki.gov.kz.
+  function tlv(tag, body) {
+    var n = body.length, h = n < 128 ? [tag, n] : n < 256 ? [tag, 0x81, n] : [tag, 0x82, n >> 8, n & 255];
+    var o = new Uint8Array(h.length + n); o.set(h, 0); o.set(body, h.length); return o;
+  }
+  function cat(list) {
+    var n = 0, p = 0; list.forEach(function (x) { n += x.length; });
+    var o = new Uint8Array(n); list.forEach(function (x) { o.set(x, p); p += x.length; }); return o;
+  }
+  function sha1(u8) { return root.crypto.subtle.digest('SHA-1', u8).then(function (h) { return new Uint8Array(h); }); }
+  // Хэш ключа издателя: по его сертификату с сайта НУЦ (адрес — в сертификате подписанта), иначе по идентификатору ключа.
+  function issuerKeyHash(info) {
+    if (!info.caUrl) return Promise.resolve(info.aki);
+    return fetch('/api/pki?op=cert&url=' + encodeURIComponent(info.caUrl)).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+      if (!j || !j.cert) return info.aki;
+      var der = unb64(j.cert);
+      if (der[0] !== 0x30) der = unb64(new TextDecoder().decode(der));
+      var t = node(der, 0).kids[0].kids, q = t[0].cls === 2 ? 1 : 0;
+      return sha1(bytes(der, t[q + 5].kids[1]).subarray(1));
+    }).catch(function () { return info.aki; });
+  }
+  function ocspRequest(info, keyHash) {
+    return sha1(info.issuerRaw).then(function (nameHash) {
+      var algId = tlv(0x30, cat([new Uint8Array([0x06, 0x05, 0x2b, 0x0e, 0x03, 0x02, 0x1a]), new Uint8Array([0x05, 0x00])]));
+      var certId = tlv(0x30, cat([algId, tlv(0x04, nameHash), tlv(0x04, keyHash), tlv(0x02, info.serialRaw)]));
+      return tlv(0x30, tlv(0x30, tlv(0x30, tlv(0x30, certId))));
+    });
+  }
+  function ocspParse(der, info) {
+    var top = node(der, 0), st = bytes(der, top.kids[0])[0];
+    if (st !== 0) return { status: 'error', code: 'resp' + st };
+    var basic = octets(der, top.kids[1].kids[0].kids[1]), bn = node(basic, 0), tbs = bn.kids[0].kids, i = 0;
+    if (tbs[i].cls === 2 && tbs[i].num === 0) i++;
+    i++;                                   // кто ответил
+    var produced = time(basic, tbs[i++]), out = { status: 'unknown', producedAt: produced };
+    tbs[i].kids.forEach(function (sr) {
+      var id = sr.kids[0], serial = hex(bytes(basic, id.kids[3]));
+      if (serial !== info.serial) return;
+      var cs = sr.kids[1];
+      if (cs.tag === 0x80) out.status = 'good';
+      else if (cs.tag === 0xa1) {
+        out.status = 'revoked'; out.revokedAt = time(basic, cs.kids[0]);
+        if (cs.kids[1]) out.reason = bytes(basic, cs.kids[1].kids[0])[0];
+        // Так НУЦ отвечает на номер, который он не выдавал (RFC 6960, п. 2.2): «отозван» 01.01.1970, причина certificateHold.
+        if (out.revokedAt <= 0 && out.reason === 6) { out.status = 'unknown'; delete out.revokedAt; }
+      }
+      else out.status = 'unknown';
+      out.thisUpdate = time(basic, sr.kids[2]);
+    });
+    return out;
+  }
+  function ocspSend(info, keyHash) {
+    return ocspRequest(info, keyHash).then(function (req) {
+      return fetch('/api/pki?op=ocsp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ der: b64(req) }) });
+    }).then(function (r) { return r.ok ? r.json() : { error: r.status }; }).then(function (j) {
+      if (!j || !j.ocsp) return { status: 'error', code: 'net' };
+      return ocspParse(unb64(j.ocsp), info);
+    });
+  }
+  // Статус сертификата сейчас: good / revoked (с датой отзыва) / unknown / error. at — когда проверили.
+  function ocsp(info) {
+    if (!info || !info.issuerRaw || !info.serialRaw) return Promise.resolve({ status: 'error', code: 'cert', at: Date.now() });
+    if (!info.ocspUrl || !/(^|\.)pki\.gov\.kz/i.test(info.ocspUrl)) return Promise.resolve({ status: 'notNuc', at: Date.now() });
+    return issuerKeyHash(info).then(function (kh) {
+      if (!kh) return { status: 'error', code: 'issuer' };
+      return ocspSend(info, kh).then(function (r) {
+        // Если НУЦ не узнал сертификат по ключу издателя из сертификата НУЦ, пробуем идентификатор ключа.
+        if (r.status === 'unknown' && info.aki && hex(info.aki) !== hex(kh)) return ocspSend(info, info.aki);
+        return r;
+      });
+    }).catch(function () { return { status: 'error', code: 'net' }; }).then(function (r) { r.at = Date.now(); return r; });
+  }
 
   /* ---------- Штамп ЭЦП ---------- */
   // Блок «Документ подписан ЭЦП» для просмотра, .docx и .pdf. Текст — на языке документа,
@@ -209,5 +337,5 @@
     return { k: 'stamp', head: s('st.head'), rows: [[s('st.time'), when(r.time || r.at, true), false]], foot: '' };
   }
 
-  root.DocumEcp = { check: check, sign: sign, parse: parse, verify: verify, alg: alg, b64: b64, unb64: unb64, hex: hex, stamp: stamp, cert: cert };
+  root.DocumEcp = { check: check, sign: sign, parse: parse, verify: verify, alg: alg, b64: b64, unb64: unb64, hex: hex, stamp: stamp, cert: cert, ocsp: ocsp, ocspRequest: ocspRequest, ocspParse: ocspParse };
 })(window);
