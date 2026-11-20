@@ -36,6 +36,15 @@
     });
   }
   function check() { return call(null, 8000); }
+  // NCALayer может вернуть подпись строкой, массивом или объектом, с заголовками PEM и переносами строк.
+  function pick(v) {
+    if (Array.isArray(v)) v = v[0];
+    if (v && typeof v === 'object') v = v.cms || v.signature || v.result || v.data || Object.keys(v).map(function (k) { return v[k]; }).filter(function (x) { return typeof x === 'string'; })[0];
+    return clean(String(v || ''));
+  }
+  function clean(s) {
+    return s.replace(/-----(BEGIN|END)[^-]*-----/g, '').replace(/[\s"]/g, '').replace(/-/g, '+').replace(/_/g, '/');
+  }
   function sign(base64) {
     var basics = {
       module: 'kz.gov.pki.knca.basics', method: 'sign',
@@ -48,12 +57,14 @@
       }
     };
     return call(basics).then(function (d) {
-      if (d.status === true && d.body && d.body.result) return [].concat(d.body.result)[0];
+      // Ответ без ключей и паролей: только подпись и служебные поля. Видно в консоли браузера при разборе ошибок.
+      if (root.console) console.info('NCALayer:', JSON.stringify(d).slice(0, 240));
+      if (d.status === true && d.body && d.body.result) return pick(d.body.result);
       if (d.status === true) throw { code: 'cancel' };
       // Старые версии NCALayer без модуля basics: тот же результат через commonUtils.
       if (/module|bundle|not found|не найден/i.test(String(d.message || d.code || ''))) {
         return call({ module: 'kz.gov.pki.knca.commonUtils', method: 'createCAdESFromBase64', args: ['PKCS12', 'SIGNATURE', base64, true] }).then(function (r) {
-          if (String(r.code) === '200' && r.responseObject) return r.responseObject;
+          if (String(r.code) === '200' && r.responseObject) return pick(r.responseObject);
           throw { code: 'layer', message: r.message };
         });
       }
@@ -177,7 +188,7 @@
   }
 
   function b64(u8) { var s = ''; for (var i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); }
-  function unb64(s) { var bin = atob(s.replace(/\s+/g, '')), out = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i); return out; }
+  function unb64(s) { var bin = atob(clean(s)), out = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i); return out; }
 
   root.DocumEcp = { check: check, sign: sign, parse: parse, verify: verify, alg: alg, b64: b64, unb64: unb64, hex: hex };
 })(window);
