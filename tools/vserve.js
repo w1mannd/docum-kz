@@ -3,7 +3,7 @@
 const http = require('http'), fs = require('fs'), path = require('path'), url = require('url');
 const ROOT = process.argv[2], PORT = +process.argv[3] || 8322, EXTRA_WS = process.argv[4] || '';
 const conf = JSON.parse(fs.readFileSync(path.join(ROOT, 'vercel.json'), 'utf8'));
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.ttf': 'font/ttf', '.woff2': 'font/woff2', '.txt': 'text/plain' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.ttf': 'font/ttf', '.woff2': 'font/woff2', '.txt': 'text/plain', '.xml': 'application/xml' };
 http.createServer(async (req, res) => {
   const u = url.parse(req.url, true);
   for (const rule of conf.headers) {
@@ -25,7 +25,7 @@ http.createServer(async (req, res) => {
   }
   let p = path.join(ROOT, decodeURIComponent(u.pathname));
   if (u.pathname === '/') p = path.join(ROOT, 'index.html');
-  if (!p.startsWith(ROOT) || !fs.existsSync(p) || fs.statSync(p).isDirectory()) { res.statusCode = 404; return res.end('404'); }
+  if (!p.startsWith(ROOT) || !fs.existsSync(p) || fs.statSync(p).isDirectory()) { res.statusCode = 404; p = path.join(ROOT, '404.html'); if (!fs.existsSync(p)) return res.end('404'); }
   res.setHeader('Content-Type', TYPES[path.extname(p)] || 'application/octet-stream');
   fs.createReadStream(p).pipe(res);
 }).listen(PORT, '127.0.0.1', () => console.log('vserve http://localhost:' + PORT));

@@ -910,3 +910,8 @@ a.card:hover .more::after { transform: translateX(4px); }
 .au-what { font-size: 14.5px; overflow-wrap: anywhere; }
 .au-when { font-size: 12.5px; color: var(--muted); }
 .ecp-recheck { justify-self: start; font-size: 14px; }
+
+/* Страница 404 */
+.nf { padding-top: clamp(24px, 6vw, 72px); }
+.nf .nf-code { margin: 0 0 8px; font-size: clamp(64px, 14vw, 120px); font-weight: 750; letter-spacing: -.04em; line-height: 1; color: var(--accent, #0071E3); }
+.nf .cta { margin-top: 24px; }

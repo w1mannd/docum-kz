@@ -132,6 +132,7 @@
   function renderPicker() {
     root.textContent = '';
     var head = el('div', 'page-head');
+    document.documentElement.setAttribute('data-title', 't.builder'); document.title = t('t.builder') + ' — docum.kz';
     head.appendChild(el('h1', null, t('b.pickTitle')));
     head.appendChild(el('p', 'lead', t('b.pickLead')));
     root.appendChild(head);
@@ -250,6 +251,7 @@
     back.href = 'constructor.html';
     head.appendChild(back);
     if (DR.list().length) head.appendChild(draftsLink());
+    document.documentElement.setAttribute('data-title', 'd.' + state.code); document.title = t('d.' + state.code) + ' — docum.kz';
     head.appendChild(el('h1', 'builder-title', t('d.' + state.code)));
     root.appendChild(head);
 
