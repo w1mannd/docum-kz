@@ -73,6 +73,25 @@
     });
   }
 
+  // Сертификат выбранного ключа до подписания: нужен, чтобы штамп ЭЦП вошёл в подписываемый PDF.
+  // NCALayer показывает выбор ключа и пароль; сайт получает только сертификат (открытые данные).
+  function keyInfo() {
+    return call({ module: 'kz.gov.pki.knca.commonUtils', method: 'getKeyInfo', args: ['PKCS12'] }).then(function (r) {
+      var o = r && (r.responseObject || (r.body && r.body.result));
+      if (String(r.code) === '200' && o) {
+        var pem = typeof o === 'string' ? o : o.pem || o.certificate || Object.keys(o).map(function (k) { return o[k]; })
+          .filter(function (x) { return typeof x === 'string' && /^(-----BEGIN|MII)/.test(x); })[0];
+        if (!pem) throw { code: 'noCert' };
+        var info = cert(unb64(pem));
+        return info;
+      }
+      if (/cancel|отмен|action\.canceled/i.test(String(r.message || '') + String(r.code || ''))) throw { code: 'cancel' };
+      if (/module|bundle|not found|не найден/i.test(String(r.message || r.code || ''))) throw { code: 'noModule' };
+      if (String(r.code) === '200') throw { code: 'cancel' };
+      throw { code: 'layer', message: r.message || r.code };
+    });
+  }
+
   /* ---------- ASN.1 DER ---------- */
   function node(b, off) {
     var tag = b[off], p = off + 1, len = b[p++], indef = false;
@@ -133,6 +152,18 @@
   function hex(a) { return Array.prototype.map.call(a, function (x) { return ('0' + x.toString(16)).slice(-2); }).join(''); }
 
   // Разбор подписи CMS: подписанный документ, сертификат подписанта, время подписи, алгоритмы.
+  // Данные сертификата X.509: владелец, ИИН/БИН, кем выдан, срок, ключ.
+  function certInfo(b, cert) {
+    var t = cert.kids[0].kids, q = t[0].cls === 2 ? 1 : 0;
+    var subj = name(b, t[q + 4]), iss = name(b, t[q + 2]);
+    return {
+      serial: hex(bytes(b, t[q])), subject: subj, issuer: iss,
+      notBefore: time(b, t[q + 3].kids[0]), notAfter: time(b, t[q + 3].kids[1]),
+      spki: raw(b, t[q + 5]), keyAlg: oid(b, t[q + 5].kids[0].kids[0]),
+      iin: (subj.serial || '').replace(/^IIN/i, ''), bin: (subj.ou || '').replace(/^BIN/i, '')
+    };
+  }
+  function cert(der) { return certInfo(der, node(der, 0)); }
   function parse(cms) {
     var b = cms instanceof Uint8Array ? cms : new Uint8Array(cms);
     var ci = node(b, 0);
@@ -152,17 +183,7 @@
     var sigAlg = oid(b, s[j++].kids[0]), signature = bytes(b, s[j++]);
     var serial = sid.tag === 0x30 ? hex(bytes(b, sid.kids[1])) : null;
     var cert = certs.filter(function (c) { return hex(bytes(b, c.kids[0].kids[c.kids[0].kids[0].cls === 2 ? 1 : 0])) === serial; })[0] || certs[0];
-    var info = {}, attrs = {};
-    if (cert) {
-      var t = cert.kids[0].kids, q = t[0].cls === 2 ? 1 : 0;
-      var subj = name(b, t[q + 4]), iss = name(b, t[q + 2]);
-      info = {
-        serial: hex(bytes(b, t[q])), subject: subj, issuer: iss,
-        notBefore: time(b, t[q + 3].kids[0]), notAfter: time(b, t[q + 3].kids[1]),
-        spki: raw(b, t[q + 5]), keyAlg: oid(b, t[q + 5].kids[0].kids[0]),
-        iin: (subj.serial || '').replace(/^IIN/i, ''), bin: (subj.ou || '').replace(/^BIN/i, '')
-      };
-    }
+    var info = cert ? certInfo(b, cert) : {}, attrs = {};
     if (signedAttrs) signedAttrs.kids.forEach(function (a) {
       var id = oid(b, a.kids[0]), v = a.kids[1].kids[0];
       if (id === '1.2.840.113549.1.9.4') attrs.digest = bytes(b, v);
@@ -207,16 +228,13 @@
     if (!serial && r.cms) { try { serial = parse(unb64(r.cms)).info.serial; } catch (e) { serial = ''; } }
     var rows = [];
     var add = function (k, v, mono) { if (v) rows.push([s(k), String(v), !!mono]); };
+    // Компактный штамп: кто, когда и каким сертификатом. Остальное — в карточке подписи и в самой подписи.
     add('st.signer', [r.cn, r.given].filter(Boolean).join(' '));
-    add('st.iin', r.iin);
-    add('st.org', r.org ? r.org + (r.bin ? ', ' + s('st.bin') + ' ' + r.bin : '') : '');
+    if (r.iin || r.bin) rows.push([[r.iin ? s('st.iin') : '', r.bin ? s('st.bin') : ''].filter(Boolean).join(' / '), [r.iin, r.bin].filter(Boolean).join(' / '), false]);
     add('st.time', when(r.time || r.at, true));
     add('st.cert', serial ? serial.replace(/^(00)+(?=.)/, '').toUpperCase() : '', true);
-    add('st.issuer', r.issuer);
-    add('st.valid', r.from && r.to ? when(r.from) + ' — ' + when(r.to) : '');
-    add('st.hash', r.contentHash, true);
-    return { k: 'stamp', head: s('st.head'), rows: rows, foot: s('st.foot') };
+    return { k: 'stamp', head: s('st.head'), rows: rows, foot: s(r.embedded ? 'st.footPades' : 'st.foot') };
   }
 
-  root.DocumEcp = { check: check, sign: sign, parse: parse, verify: verify, alg: alg, b64: b64, unb64: unb64, hex: hex, stamp: stamp };
+  root.DocumEcp = { check: check, sign: sign, parse: parse, verify: verify, alg: alg, b64: b64, unb64: unb64, hex: hex, stamp: stamp, keyInfo: keyInfo, cert: cert };
 })(window);

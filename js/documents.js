@@ -570,7 +570,11 @@
   // Подпись → запись журнала: кто подписал, какую версию, результаты проверок.
   // kind 'cms' — CMS с PDF внутри (.cms); 'pades' — отсоединённая CMS внутри PDF, content — подписанные байты PDF.
   var PA = window.DocumPades;
-  function padesOf(v) { return pdfOf(v).then(function (pdf) { return PA.prepare(pdf, v.at); }); }
+  // PDF для PAdES: версия и, если есть, штамп ЭЦП внутри подписываемого содержимого.
+  function padesOf(v, stampB) {
+    var bytes = stampB ? EX.pdfBytes(v.blocks.concat([stampB]), v.at) : pdfOf(v);
+    return bytes.then(function (pdf) { return PA.prepare(pdf, v.at); });
+  }
   function ecpRecord(cmsB64, who, opt) {
     opt = opt || {};
     var kind = opt.kind || 'cms';
@@ -584,13 +588,13 @@
         if (i >= vs.length) return Promise.resolve(null);
         var v = vs[i++];
         return pdfOf(v).then(function (pdf) {
-          var data = kind === 'pades' ? PA.prepare(pdf, v.at).toSign : pdf;
-          return Promise.all([sha(data), sha(pdf)]);
+          var prep = kind === 'pades' ? (opt.stamp ? padesOf(v, opt.stamp) : Promise.resolve(PA.prepare(pdf, v.at))) : null;
+          return Promise.resolve(prep).then(function (pp) { return Promise.all([sha(pp ? pp.toSign : pdf), sha(pdf)]); });
         }).then(function (h) { if (h[0] === ch) { plain = h[1]; return v.n; } return next(); });
       }
       return next().then(function (n) {
         var inf = p.info, t0 = p.attrs.time || Date.now();
-        return { who: who, kind: kind, at: Date.now(), n: n, cms: cmsB64, contentHash: plain || ch, serial: inf.serial || '',
+        return { who: who, kind: kind, at: Date.now(), n: n, cms: cmsB64, contentHash: plain || ch, serial: inf.serial || '', stamp: opt.stamp || null,
           cn: (inf.subject || {}).cn || '', given: (inf.subject || {}).given || '', iin: inf.iin || '', bin: inf.bin || '', org: (inf.subject || {}).org || '',
           issuer: (inf.issuer || {}).cn || '', from: inf.notBefore, to: inf.notAfter, time: p.attrs.time || null,
           alg: E.alg(p.sigAlg).n + ' / ' + E.alg(p.digestAlg).n, digest: res.digest, crypto: res.crypto, gost: res.gost,
@@ -618,20 +622,38 @@
     var v = last(rec), msg = el('p', 'msg'); msg.setAttribute('role', 'status');
     var go = btn('btn btn-primary ecp-sign', f('ec.sign', { n: v.n }), function () {
       go.disabled = true; flash(msg, t('ec.prep'));
-      // PAdES: NCALayer подписывает байты PDF с подготовленным полем подписи, подпись встаёт внутрь файла.
-      var prep = null;
-      padesOf(v).then(function (pp) {
+      // 1) NCALayer показывает выбор ключа — берём сертификат и собираем штамп ЭЦП;
+      // 2) штамп входит в PDF, PDF готовится под PAdES; 3) NCALayer подписывает, подпись встаёт внутрь файла.
+      // Получается один PDF: и штамп, и настоящая подпись. Если модуль выбора ключа недоступен — PAdES без штампа.
+      var prep = null, stampB = null, picked = null, lang = v.lang || rec.lang;
+      flash(msg, t('ec.pickKey'));
+      E.keyInfo().catch(function (e) { if (e && e.code === 'noModule') return null; throw e; }).then(function (inf) {
+        picked = inf;
+        return pdfOf(v).then(sha).then(function (plainHash) {
+          if (inf) {
+            var sj = inf.subject || {};
+            stampB = E.stamp({ cn: sj.cn || '', given: sj.given || '', iin: inf.iin || '', bin: inf.bin || '', org: sj.org || '',
+              issuer: (inf.issuer || {}).cn || '', from: inf.notBefore, to: inf.notAfter, time: Date.now(), serial: inf.serial,
+              contentHash: plainHash, embedded: true }, lang);
+          }
+          return padesOf(v, stampB);
+        });
+      }).then(function (pp) {
         prep = pp;
         flash(msg, t('ec.confirm'));
         return E.sign(E.b64(prep.toSign), true);
-      }).then(function (cms) { return ecpRecord(cms, 'self', { kind: 'pades', content: prep.toSign }); }).then(function (r) {
+      }).then(function (cms) {
+        // Подписать нужно тем же ключом, чей сертификат попал в штамп.
+        if (picked && E.parse(E.unb64(cms)).info.serial !== picked.serial) throw { code: 'otherKey' };
+        return ecpRecord(cms, 'self', { kind: 'pades', content: prep.toSign, stamp: stampB });
+      }).then(function (r) {
         rec.ecp = rec.ecp || []; rec.ecp.push(r); rec.status = 'signed';
         justSigned = rec.ecp.length - 1;
         return ST.put(rec).then(function () { renderDoc(); });
       }).catch(function (e) {
         go.disabled = false;
         var code = e && e.code;
-        flash(msg, code === 'noLayer' ? t('ec.none') : code === 'cancel' ? t('ec.cancel') : code === 'timeout' ? t('ec.timeout') : f('ec.err', { m: (e && e.message) || '' }), true);
+        flash(msg, code === 'noLayer' ? t('ec.none') : code === 'cancel' ? t('ec.cancel') : code === 'otherKey' ? t('ec.otherKey') : code === 'noCert' ? t('ec.noCert') : code === 'timeout' ? t('ec.timeout') : f('ec.err', { m: (e && e.message) || '' }), true);
       });
     });
     intro.appendChild(go); intro.appendChild(msg);
@@ -662,24 +684,18 @@
       ck(r.crypto === 'ok' ? 'ok' : r.crypto === 'fail' ? 'fail' : 'skip', r.crypto === 'ok' ? t('ec.cryOk') : r.crypto === 'fail' ? t('ec.cryBad') : t('ec.crySkip'));
       ck(r.valid === true ? 'ok' : r.valid === false ? 'fail' : 'skip', r.valid === true ? t('ec.certOk') : r.valid === false ? t('ec.certBad') : t('ec.certSkip'));
       card.appendChild(checks);
-      // Штамп на документе: как он будет выглядеть в PDF и Word.
       var v = r.n ? rec.versions[r.n - 1] : null;
-      if (v) {
-        var prev = el('div', 'sheet ecp-stamp-prev'); prev.lang = v.lang || rec.lang;
-        prev.innerHTML = EX.toHTML([E.stamp(r, v.lang || rec.lang)]);
-        card.appendChild(prev);
-      }
       var acts = el('div', 'ecp-dls');
       var base = fileName(rec).replace(/-v\d+$/, '') + (v ? '-v' + v.n : '') + '-ecp' + (i + 1);
       if (r.kind === 'pades' && v) {
         var padBtn = btn('btn btn-primary', '', function () {
           padBtn.disabled = true;
-          padesOf(v).then(function (pp) {
+          padesOf(v, r.stamp).then(function (pp) {
             EX.saveBlob(new Blob([PA.embed(pp, E.unb64(r.cms))], { type: 'application/pdf' }), base + '-signed.pdf');
           }).then(function () { padBtn.disabled = false; }, function () { padBtn.disabled = false; });
         });
-        padBtn.appendChild(el('b', null, t('ec.dlPades')));
-        padBtn.appendChild(el('small', null, t('ec.dlPadesSub')));
+        padBtn.appendChild(el('b', null, t(r.stamp ? 'ec.dlPadesStamp' : 'ec.dlPades')));
+        padBtn.appendChild(el('small', null, t(r.stamp ? 'ec.dlPadesStampSub' : 'ec.dlPadesSub')));
         acts.appendChild(padBtn);
       } else {
         var cmsBtn = btn('btn btn-primary', '', function () {
@@ -689,7 +705,7 @@
         cmsBtn.appendChild(el('small', null, t('ec.dlCmsSub')));
         acts.appendChild(cmsBtn);
       }
-      if (v) {
+      if (v && !r.stamp) {
         var pdfBtn = btn('btn btn-ghost', '', function () {
           pdfBtn.disabled = true;
           EX.pdfBytes(stamped(v), v.at).then(function (pdf) {

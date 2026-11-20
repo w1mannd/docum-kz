@@ -27,6 +27,9 @@ async def handler(ws):
             print('подписываю', len(data), 'байт', flush=True)
             attach = req['args'].get('signingParams', {}).get('encapsulate', True)
             await ws.send(json.dumps({'status': True, 'body': {'result': [sign(data, attach)]}}))
+        elif req.get('module') == 'kz.gov.pki.knca.commonUtils' and req.get('method') == 'getKeyInfo':
+            pem = open(os.path.join(KEYS, 'cert.pem')).read()
+            await ws.send(json.dumps({'code': '200', 'responseObject': {'alias': 'test', 'pem': pem}}))
         else:
             await ws.send(json.dumps({'status': False, 'code': '500', 'message': 'module not found'}))
 

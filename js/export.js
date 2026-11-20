@@ -140,26 +140,26 @@
           break;
         case 'stamp':
           var blue = { style: D.BorderStyle.SINGLE, size: 12, color: '1F4FD8' };
-          var lab = Math.round(PAGE_W * 0.34);
+          var SW = Math.round(PAGE_W * 0.6), lab = Math.round(SW * 0.3);
           var srow = function (r) {
             return new D.TableRow({ cantSplit: true, children: [
               new D.TableCell({ width: { size: lab, type: D.WidthType.DXA }, borders: noBorders, margins: { left: 160, right: 60 },
-                children: [para(r[0], { spacing: { after: 30 } }, { size: 18, color: '5A6478' })] }),
-              new D.TableCell({ width: { size: PAGE_W - lab, type: D.WidthType.DXA }, borders: noBorders, margins: { left: 60, right: 160 },
-                children: [para(r[1], { spacing: { after: 30 } }, { size: r[2] ? 15 : 19, bold: !r[2], font: r[2] ? 'Courier New' : FONT_DOCX })] })
+                children: [para(r[0], { spacing: { after: 10 } }, { size: 15, color: '5A6478' })] }),
+              new D.TableCell({ width: { size: SW - 120 - lab, type: D.WidthType.DXA }, borders: noBorders, margins: { left: 60, right: 120 },
+                children: [para(r[1], { spacing: { after: 10 } }, { size: r[2] ? 14 : 16, bold: !r[2], font: r[2] ? 'Courier New' : FONT_DOCX })] })
             ] });
           };
-          var inner = new D.Table({ width: { size: PAGE_W - 120, type: D.WidthType.DXA }, columnWidths: [lab, PAGE_W - 120 - lab], borders: noBorders, rows: b.rows.map(srow) });
+          var inner = new D.Table({ width: { size: SW - 120, type: D.WidthType.DXA }, columnWidths: [lab, SW - 120 - lab], borders: noBorders, rows: b.rows.map(srow) });
           out.push(para('', { spacing: { before: 200, after: 0 } }));
           out.push(new D.Table({
-            width: { size: PAGE_W, type: D.WidthType.DXA }, columnWidths: [PAGE_W],
+            width: { size: SW, type: D.WidthType.DXA }, columnWidths: [SW],
             borders: { top: blue, bottom: blue, left: blue, right: blue, insideHorizontal: none, insideVertical: none },
             rows: [new D.TableRow({ cantSplit: true, children: [new D.TableCell({
-              width: { size: PAGE_W, type: D.WidthType.DXA }, margins: { top: 120, bottom: 120, left: 60, right: 60 },
+              width: { size: SW, type: D.WidthType.DXA }, margins: { top: 80, bottom: 80, left: 60, right: 60 },
               children: [
-                para(b.head, { alignment: D.AlignmentType.CENTER, spacing: { after: 100 }, keepNext: true }, { bold: true, size: 20, color: '1F4FD8' }),
+                para(b.head, { alignment: D.AlignmentType.CENTER, spacing: { after: 60 }, keepNext: true }, { bold: true, size: 16, color: '1F4FD8' }),
                 inner,
-                para(b.foot, { alignment: D.AlignmentType.CENTER, spacing: { before: 80, after: 0 } }, { size: 16, color: '5A6478' })
+                para(b.foot, { alignment: D.AlignmentType.CENTER, spacing: { before: 50, after: 0 } }, { size: 13, color: '5A6478' })
               ]
             })] })]
           }));
@@ -252,15 +252,15 @@
         case 'stamp':
           content.push({
             unbreakable: true, margin: [0, 12, 0, 4],
-            table: { widths: ['*'], body: [[{ stack: [
-              { text: b.head, bold: true, fontSize: 10, color: '#1F4FD8', alignment: 'center', margin: [0, 0, 0, 6] },
-              { table: { widths: [150, '*'], body: b.rows.map(function (r) {
-                return [{ text: r[0], fontSize: 8.5, color: '#5A6478' }, { text: r[1], fontSize: r[2] ? 7.5 : 9.5, bold: !r[2] }];
+            table: { widths: [290], body: [[{ stack: [
+              { text: b.head, bold: true, fontSize: 8, color: '#1F4FD8', alignment: 'center', margin: [0, 0, 0, 4] },
+              { table: { widths: [72, '*'], body: b.rows.map(function (r) {
+                return [{ text: r[0], fontSize: 7, color: '#5A6478' }, { text: r[1], fontSize: r[2] ? 6.5 : 8, bold: !r[2] }];
               }) }, layout: { hLineWidth: function () { return 0; }, vLineWidth: function () { return 0; }, paddingLeft: function () { return 2; }, paddingRight: function () { return 2; }, paddingTop: function () { return 1.5; }, paddingBottom: function () { return 1.5; } } },
-              { text: b.foot, fontSize: 7.5, color: '#5A6478', alignment: 'center', margin: [0, 6, 0, 0] }
+              { text: b.foot, fontSize: 6.5, color: '#5A6478', alignment: 'center', margin: [0, 4, 0, 0] }
             ] }]] },
             layout: { hLineWidth: function () { return 1.2; }, vLineWidth: function () { return 1.2; }, hLineColor: function () { return '#1F4FD8'; }, vLineColor: function () { return '#1F4FD8'; },
-              paddingLeft: function () { return 10; }, paddingRight: function () { return 10; }, paddingTop: function () { return 8; }, paddingBottom: function () { return 8; } }
+              paddingLeft: function () { return 8; }, paddingRight: function () { return 8; }, paddingTop: function () { return 6; }, paddingBottom: function () { return 6; } }
           });
           break;
         case 'table':
