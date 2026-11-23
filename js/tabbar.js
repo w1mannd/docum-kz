@@ -1,6 +1,8 @@
-/* docum.kz — анимации нижнего меню на телефонах.
-   Подсветка выбранного раздела переезжает к нажатой вкладке, иконка пружинит при нажатии,
-   меню уезжает вниз при прокрутке вниз и возвращается при прокрутке вверх.
+/* docum.kz — нижнее меню на телефонах.
+   Подсветка раздела стоит в разметке, её место задаёт CSS по выбранной вкладке (aria-current):
+   при нажатии вкладка выбирается сразу, подсветка переезжает, и открывается раздел.
+   Между страницами работает плавный переход (View Transitions), меню и подсветка в нём не мигают.
+   Меню уезжает вниз при прокрутке вниз и возвращается при прокрутке вверх.
    При «уменьшить движение» в системе анимации не запускаются. */
 (function () {
   'use strict';
@@ -8,6 +10,8 @@
   if (!bar) return;
   var reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
   var phone = window.matchMedia('(max-width: 768px)');
+  // Плавный переход между страницами есть — тогда открываем раздел сразу, подсветку доведёт переход.
+  var vt = !!(window.CSS && CSS.supports && CSS.supports('view-transition-name: a') && 'onpagereveal' in window);
 
   // Пока страница загружается, меню не анимируется: в конструкторе оно сразу скрыто, без мелькания.
   bar.style.transition = 'none';
@@ -15,54 +19,18 @@
     window.requestAnimationFrame(function () { window.requestAnimationFrame(function () { bar.style.transition = ''; }); });
   });
 
-  var ind = document.createElement('span');
-  ind.className = 'tab-ind';
-  ind.setAttribute('aria-hidden', 'true');
-  bar.insertBefore(ind, bar.firstChild);
-  bar.classList.add('has-ind');
-
   var start = bar.querySelector('.tab[aria-current="page"]');
   var current = start;
 
-  function place(tab, animate) {
-    if (!tab) { ind.style.opacity = '0'; return; }
-    if (!animate) ind.style.transition = 'none';
-    ind.style.opacity = '1';
-    ind.style.width = tab.offsetWidth + 'px';
-    ind.style.transform = 'translateX(' + tab.offsetLeft + 'px)';
-    if (!animate) { void ind.offsetWidth; ind.style.transition = ''; }
-  }
-  place(current, false);
-  window.addEventListener('resize', function () { place(current, false); });
-
-  // Нажатие на вкладку: подсветка переезжает, затем открывается раздел.
   bar.addEventListener('click', function (e) {
     var tab = e.target.closest('.tab');
     if (!tab || tab === current || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button) return;
-    if (reduce.matches || !phone.matches) return;
-    e.preventDefault();
-    if (!current) {
-      // На главной подсветки нет: она появляется сразу под нажатой вкладкой.
-      ind.style.transition = 'none';
-      ind.style.width = tab.offsetWidth + 'px';
-      ind.style.transform = 'translateX(' + tab.offsetLeft + 'px) scale(.6)';
-      ind.style.opacity = '0';
-      void ind.offsetWidth;
-      ind.style.transition = '';
-    } else {
-      current.removeAttribute('aria-current');
-    }
+    if (current) current.removeAttribute('aria-current');
     tab.setAttribute('aria-current', 'page');
     current = tab;
-    place(tab, true);
-    setTimeout(function () { window.location.href = tab.href; }, 160);
-  });
-
-  // Стекло слегка увеличивается, пока палец на меню.
-  function press(on) { bar.classList.toggle('is-pressed', on); }
-  bar.addEventListener('pointerdown', function () { press(true); });
-  ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (t) {
-    bar.addEventListener(t, function () { press(false); });
+    if (reduce.matches || !phone.matches || vt) return;   // браузер откроет ссылку сам
+    e.preventDefault();
+    setTimeout(function () { window.location.href = tab.href; }, 120);
   });
 
   // Прокрутка: вниз — меню прячется, вверх или у краёв страницы — возвращается.
@@ -86,7 +54,6 @@
     if (current && current !== start) current.removeAttribute('aria-current');
     if (start) start.setAttribute('aria-current', 'page');
     current = start;
-    bar.classList.remove('is-hidden', 'is-pressed');
-    place(current, false);
+    bar.classList.remove('is-hidden');
   });
 })();

@@ -166,6 +166,11 @@
   applyLang();
   document.documentElement.classList.remove('i18n-wait');
 
+  // Сервис-воркер (sw.js): страницы открываются из кэша браузера без ожидания сервера.
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+    window.addEventListener('load', function () { navigator.serviceWorker.register('/sw.js').catch(function () { /* без него сайт работает как раньше */ }); });
+  }
+
   // Блоки страницы плавно выезжают снизу, когда доходят до экрана.
   var calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (!calm && 'IntersectionObserver' in window) {
