@@ -117,7 +117,7 @@ module.exports = async function handler(req, res) {
       if (left < 3000) break;
       if (pause[i]) await new Promise((ok) => setTimeout(ok, pause[i]));
       model = plan[i];
-      const ac = new AbortController(); const timer = setTimeout(() => ac.abort(), Math.min(20000, left));
+      const ac = new AbortController(); const timer = setTimeout(() => ac.abort(), Math.min(12000, left));
       try {
         r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent', {
           method: 'POST', signal: ac.signal,
