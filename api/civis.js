@@ -11,7 +11,7 @@ const index = new S.Index(NPA.units);
 
 // Модели закреплены в коде: точные имена версий, без псевдонимов вида «-latest», поэтому Google не подменит их другими.
 // Первая — основная. Если Google перегружен (503, 429, 500) или модель недоступна (404), берётся следующая.
-const MODELS = ['gemini-3.1-flash-lite', 'gemini-3.8-flash-lite', 'gemini-3.8-flash', 'gemini-3.1-flash'];
+const MODELS = ['gemini-3.1-flash-lite', 'gemini-3.8-flash'];
 const MODEL = MODELS[0];
 const RETRY = new Set([404, 429, 500, 503, 504]);
 const MAX_Q = 600, MAX_TURNS = 6, K = 6, MAX_CTX = 26000;
@@ -106,15 +106,16 @@ module.exports = async function handler(req, res) {
     contents: msgs.map((m) => ({ role: m.role, parts: [{ text: m.text }] })),
     generationConfig: { temperature: 0.2, maxOutputTokens: 700 }
   });
-  // Основная модель — до двух попыток, запасные — по одной. Всего не дольше 40 секунд.
-  const plan = [MODELS[0], MODELS[0]].concat(MODELS.slice(1));
+  // Попытки по очереди: основная, она же через паузу, запасная, снова обе после паузы подольше. Всего не дольше 40 секунд.
+  const plan = [MODELS[0], MODELS[0], MODELS[1], MODELS[0], MODELS[1]];
+  const pause = [0, 700, 0, 1500, 0];
   const until = Date.now() + 40000;
   try {
     let r = null, data = {}, model = MODEL; const tried = [];
     for (let i = 0; i < plan.length; i++) {
       const left = until - Date.now();
       if (left < 3000) break;
-      if (i === 1) await new Promise((ok) => setTimeout(ok, 700));
+      if (pause[i]) await new Promise((ok) => setTimeout(ok, pause[i]));
       model = plan[i];
       const ac = new AbortController(); const timer = setTimeout(() => ac.abort(), Math.min(20000, left));
       try {
@@ -129,7 +130,6 @@ module.exports = async function handler(req, res) {
       tried.push(model + ':' + (r ? r.status : 'net'));
       if (r && r.ok) break;
       if (r && !RETRY.has(r.status)) break;   // ошибка запроса или ключа: другая модель не поможет
-      if (r && r.status === 404 && model === MODELS[0]) i++;   // основной модели нет — сразу к запасной
     }
     if (!r) { res.status(502).json({ error: 'network', tried: tried }); return; }
     if (!r.ok) { res.status(502).json({ error: 'model', status: r.status, detail: (data.error && data.error.message || '').slice(0, 200), tried: tried }); return; }
