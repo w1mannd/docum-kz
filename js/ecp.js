@@ -127,8 +127,15 @@
   var ALG = {
     '2.16.840.1.101.3.4.2.1': { n: 'SHA-256', web: 'SHA-256' }, '1.3.14.3.2.26': { n: 'SHA-1', web: 'SHA-1' },
     '1.2.840.113549.1.1.1': { n: 'RSA', rsa: true }, '1.2.840.113549.1.1.11': { n: 'RSA SHA-256', rsa: true }, '1.2.840.113549.1.1.5': { n: 'RSA SHA-1', rsa: true },
-    '1.2.398.3.10.1.3.3': { n: 'ГОСТ 34.11-2015' }, '1.2.398.3.10.1.1.2.3.2': { n: 'ГОСТ 34.10-2015 (512)' }, '1.2.398.3.10.1.1.2.3.1': { n: 'ГОСТ 34.10-2015 (256)' },
-    '1.2.643.7.1.1.2.2': { n: 'ГОСТ Р 34.11-2012 (256)' }, '1.2.643.7.1.1.1.1': { n: 'ГОСТ Р 34.10-2012 (256)' }
+    '1.2.840.113549.1.1.12': { n: 'RSA SHA-384', rsa: true, web: 'SHA-384' }, '1.2.840.113549.1.1.13': { n: 'RSA SHA-512', rsa: true, web: 'SHA-512' },
+    '2.16.840.1.101.3.4.2.2': { n: 'SHA-384', web: 'SHA-384' }, '2.16.840.1.101.3.4.2.3': { n: 'SHA-512', web: 'SHA-512' },
+    // ГОСТ: хэш «Стрибог» и подпись на эллиптической кривой (js/gost.js). bits — размер хэша для подписи.
+    '1.2.398.3.10.1.3.3': { n: 'ГОСТ 34.11-2015', gostHash: true }, '1.2.398.3.10.1.3.2': { n: 'ГОСТ 34.11-2015 (256)', gostHash: 256 },
+    '1.2.398.3.10.1.1.2.3.2': { n: 'ГОСТ 34.10-2015 (512)', gost: 512 }, '1.2.398.3.10.1.1.2.3.1': { n: 'ГОСТ 34.10-2015 (256)', gost: 256 },
+    '1.2.398.3.10.1.1.2.2': { n: 'ГОСТ 34.10-2015', gost: true }, '1.2.398.3.10.1.1.1.2': { n: 'ГОСТ 34.310-2004 (устаревший)', old: true },
+    '1.2.643.7.1.1.2.2': { n: 'ГОСТ Р 34.11-2012 (256)', gostHash: 256 }, '1.2.643.7.1.1.2.3': { n: 'ГОСТ Р 34.11-2012 (512)', gostHash: 512 },
+    '1.2.643.7.1.1.1.1': { n: 'ГОСТ Р 34.10-2012 (256)', gost: true }, '1.2.643.7.1.1.1.2': { n: 'ГОСТ Р 34.10-2012 (512)', gost: true },
+    '1.2.643.7.1.1.3.2': { n: 'ГОСТ Р 34.10-2012 (256)', gost: 256 }, '1.2.643.7.1.1.3.3': { n: 'ГОСТ Р 34.10-2012 (512)', gost: 512 }
   };
   function alg(id) { return ALG[id] || { n: id }; }
   function hex(a) { return Array.prototype.map.call(a, function (x) { return ('0' + x.toString(16)).slice(-2); }).join(''); }
@@ -205,7 +212,7 @@
     if (s[j].cls === 2 && s[j].num === 0) signedAttrs = s[j++];
     var sigAlg = oid(b, s[j++].kids[0]), signature = bytes(b, s[j++]), tsp = null;
     if (s[j] && s[j].cls === 2 && s[j].num === 1) s[j].kids.forEach(function (a) {
-      if (oid(b, a.kids[0]) === '1.2.840.113549.1.9.16.2.14') { try { tsp = tstOf(b, a.kids[1].kids[0]); } catch (e) { tsp = null; } }
+      if (oid(b, a.kids[0]) === '1.2.840.113549.1.9.16.2.14') { try { tsp = tstOf(b, a.kids[1].kids[0]); tsp.der = new Uint8Array(raw(b, a.kids[1].kids[0])); } catch (e) { tsp = null; } }
     });
     var serial = sid.tag === 0x30 ? hex(bytes(b, sid.kids[1])) : null;
     var cert = certs.filter(function (c) { return hex(bytes(b, c.kids[0].kids[c.kids[0].kids[0].cls === 2 ? 1 : 0])) === serial; })[0] || certs[0];
@@ -216,7 +223,10 @@
       if (id === '1.2.840.113549.1.9.5') attrs.time = time(b, v);
     });
     return { content: content, info: info, attrs: attrs, digestAlg: digestAlg, sigAlg: sigAlg, signature: signature, tsp: tsp,
-      signedAttrs: signedAttrs ? raw(b, signedAttrs) : null, certCount: certs.length };
+      signedAttrs: signedAttrs ? raw(b, signedAttrs) : null, certCount: certs.length,
+      // Для цепочки доверия: все сертификаты из подписи и сертификат подписанта (DER).
+      certs: certs.map(function (c) { return new Uint8Array(raw(b, c)); }), signerDer: cert ? new Uint8Array(raw(b, cert)) : null,
+      contentType: oid(b, enc.kids[0]) };
   }
 
   // Проверка: (1) отпечаток содержимого совпадает с атрибутом подписи; (2) для RSA — подпись по открытому ключу сертификата.
@@ -224,22 +234,61 @@
     var subtle = root.crypto && root.crypto.subtle;
     // Метка времени относится именно к этой подписи, если в ней отпечаток значения подписи.
     var ta = p.tsp ? alg(p.tsp.alg) : null;
-    var tspCheck = !p.tsp ? Promise.resolve('none') : (!subtle || !ta.web) ? Promise.resolve('skip')
-      : subtle.digest(ta.web, p.signature).then(function (h) { return hex(new Uint8Array(h)) === hex(p.tsp.imprint) ? 'ok' : 'fail'; }, function () { return 'skip'; });
+    var tspCheck = !p.tsp ? Promise.resolve('none') : digestOf(ta, p.signature, p.tsp.imprint.length).then(function (h) {
+      return !h ? 'skip' : sameHash(h, p.tsp.imprint) ? 'ok' : 'fail';
+    }, function () { return 'skip'; });
     return tspCheck.then(function (tc) { return verifyCore(p, tc); });
   }
+  var G = function () { return root.DocumGost; };
+  // Хэш по алгоритму: SHA — через WebCrypto, «Стрибог» — через js/gost.js. size — длина ожидаемого хэша (для ГОСТ: 32 или 64 байта).
+  function digestOf(a, data, size) {
+    var subtle = root.crypto && root.crypto.subtle;
+    if (a.web && subtle) return subtle.digest(a.web, data).then(function (h) { return new Uint8Array(h); });
+    if (a.gostHash && G()) return Promise.resolve(G().streebog(data, a.gostHash === 256 || size === 32 ? 256 : 512));
+    return Promise.resolve(null);
+  }
+  // Хэш «Стрибог» записывают и как есть, и в обратном порядке байт (little-endian): принимаем оба написания одного и того же значения.
+  function sameHash(h, v) { var x = hex(h); return x === hex(v) || x === hex(Array.prototype.slice.call(v).reverse()); }
+  function rev(u8) { return new Uint8Array(Array.prototype.slice.call(u8).reverse()); }
+  // Открытый ключ ГОСТ из SubjectPublicKeyInfo: BIT STRING → OCTET STRING → x‖y (little-endian).
+  function gostPub(spki) {
+    var n = node(spki, 0), bs = bytes(spki, n.kids[1]).subarray(1);
+    return bs[0] === 0x04 ? bytes(bs, node(bs, 0)) : bs;
+  }
+  // Подпись ГОСТ над данными: хэш «Стрибог» нужного размера и проверка по ключу.
+  // НУЦ пишет подпись как r‖s в little-endian; встречается и обратная запись (s‖r, big-endian) — это то же значение.
+  function gostCheck(spki, data, sig) {
+    var g = G(); if (!g) return null;
+    var pub = gostPub(spki), half = pub.length / 2, h = g.streebog(data, half === 32 ? 256 : 512);
+    return g.verify(pub, h, sig) || g.verify(pub, h, rev(sig));
+  }
+  // RSA над данными через WebCrypto. hash — 'SHA-256' и т. п.
+  function rsaCheck(spki, data, sig, hash) {
+    var subtle = root.crypto && root.crypto.subtle;
+    if (!subtle) return Promise.resolve(null);
+    return subtle.importKey('spki', spki, { name: 'RSASSA-PKCS1-v1_5', hash: hash || 'SHA-256' }, false, ['verify'])
+      .then(function (key) { return subtle.verify('RSASSA-PKCS1-v1_5', key, sig, data); })
+      .catch(function () { return null; });
+  }
+  // Любая подпись по сертификату: true / false / null (проверить нечем).
+  function checkSig(spki, keyAlg, sigAlg, data, sig, digestAlg) {
+    var sa = alg(sigAlg), ka = alg(keyAlg), da = alg(digestAlg || '');
+    if (sa.gost || ka.gost) return Promise.resolve(gostCheck(spki, data, sig));
+    if (sa.rsa || ka.rsa) return rsaCheck(spki, data, sig, sa.web || da.web || 'SHA-256');
+    return Promise.resolve(null);
+  }
   function verifyCore(p, tc) {
-    var subtle = root.crypto && root.crypto.subtle, d = alg(p.digestAlg), res = { digest: 'skip', crypto: 'skip', gost: !d.web, tsp: tc };
-    if (!subtle || !d.web || !p.content) return Promise.resolve(res);
-    return subtle.digest(d.web, p.content).then(function (h) {
-      res.digest = p.attrs.digest ? (hex(new Uint8Array(h)) === hex(p.attrs.digest) ? 'ok' : 'fail') : 'skip';
-      var sa = alg(p.sigAlg), ka = alg(p.info.keyAlg);
-      if (!(sa.rsa || ka.rsa) || !p.signedAttrs || !p.info.spki) return res;
+    var d = alg(p.digestAlg), res = { digest: 'skip', crypto: 'skip', gost: !!(d.gostHash || alg(p.sigAlg).gost), tsp: tc };
+    if (!p.content) return Promise.resolve(res);
+    var size = p.attrs.digest ? p.attrs.digest.length : 64;
+    return digestOf(d, p.content, size).then(function (h) {
+      if (!h) return res;
+      res.digest = p.attrs.digest ? (sameHash(h, p.attrs.digest) ? 'ok' : 'fail') : 'skip';
+      if (!p.signedAttrs || !p.info.spki) return res;
       var data = new Uint8Array(p.signedAttrs); data[0] = 0x31;   // подписывается SET, а не [0]
-      return subtle.importKey('spki', p.info.spki, { name: 'RSASSA-PKCS1-v1_5', hash: d.web }, false, ['verify'])
-        .then(function (key) { return subtle.verify('RSASSA-PKCS1-v1_5', key, p.signature, data); })
-        .then(function (ok) { res.crypto = ok ? 'ok' : 'fail'; return res; })
-        .catch(function () { res.crypto = 'skip'; return res; });
+      return checkSig(p.info.spki, p.info.keyAlg, p.sigAlg, data, p.signature, p.digestAlg).then(function (ok) {
+        res.crypto = ok === true ? 'ok' : ok === false ? 'fail' : 'skip'; return res;
+      });
     });
   }
 
@@ -283,6 +332,9 @@
     if (tbs[i].cls === 2 && tbs[i].num === 0) i++;
     i++;                                   // кто ответил
     var produced = time(basic, tbs[i++]), out = { status: 'unknown', producedAt: produced };
+    // Подпись самого ответа: что подписано, чем и сертификаты ответчика (проверяет js/pki.js).
+    out.sig = { tbs: new Uint8Array(raw(basic, bn.kids[0])), alg: oid(basic, bn.kids[1].kids[0]), value: bytes(basic, bn.kids[2]).slice(1),
+      certs: bn.kids[3] ? bn.kids[3].kids[0].kids.map(function (c) { return new Uint8Array(raw(basic, c)); }) : [] };
     tbs[i].kids.forEach(function (sr) {
       var id = sr.kids[0], serial = hex(bytes(basic, id.kids[3]));
       if (serial !== info.serial) return;
@@ -308,7 +360,8 @@
     });
   }
   // Статус сертификата сейчас: good / revoked (с датой отзыва) / unknown / error. at — когда проверили.
-  function ocsp(info) {
+  // keep — оставить в ответе данные его подписи (для страницы проверки); в журнал они не сохраняются.
+  function ocsp(info, keep) {
     if (!info || !info.issuerRaw || !info.serialRaw) return Promise.resolve({ status: 'error', code: 'cert', at: Date.now() });
     if (!info.ocspUrl || !/(^|\.)pki\.gov\.kz/i.test(info.ocspUrl)) return Promise.resolve({ status: 'notNuc', at: Date.now() });
     return issuerKeyHash(info).then(function (kh) {
@@ -318,7 +371,7 @@
         if (r.status === 'unknown' && info.aki && hex(info.aki) !== hex(kh)) return ocspSend(info, info.aki);
         return r;
       });
-    }).catch(function () { return { status: 'error', code: 'net' }; }).then(function (r) { r.at = Date.now(); return r; });
+    }).catch(function () { return { status: 'error', code: 'net' }; }).then(function (r) { r.at = Date.now(); if (!keep) delete r.sig; return r; });
   }
 
   /* ---------- Штамп ЭЦП ---------- */
@@ -337,5 +390,6 @@
     return { k: 'stamp', head: s('st.head'), rows: [[s('st.time'), when(r.time || r.at, true), false]], foot: '' };
   }
 
-  root.DocumEcp = { check: check, sign: sign, parse: parse, verify: verify, alg: alg, b64: b64, unb64: unb64, hex: hex, stamp: stamp, cert: cert, ocsp: ocsp, ocspRequest: ocspRequest, ocspParse: ocspParse };
+  root.DocumEcp = { check: check, sign: sign, parse: parse, verify: verify, verifyCore: verifyCore, checkSig: checkSig, digestOf: digestOf, sameHash: sameHash,
+    asn: { node: node, bytes: bytes, raw: raw, oid: oid, str: str, time: time, octets: octets, name: name, exts: exts }, certInfo: certInfo, alg: alg, b64: b64, unb64: unb64, hex: hex, stamp: stamp, cert: cert, ocsp: ocsp, ocspRequest: ocspRequest, ocspParse: ocspParse };
 })(window);

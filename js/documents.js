@@ -862,6 +862,7 @@
     list.appendChild(imp); list.appendChild(file); list.appendChild(impMsg);
     panel.appendChild(list);
     panel.appendChild(el('p', 'sign-legal', t('ec.legal')));
+    var vl = el('p', 'jr-note'), va = el('a', null, t('ec.verifyLink')); va.href = 'verify.html'; vl.appendChild(va); panel.appendChild(vl);
   }
 
   // При защите паролем раздел открывается только после ввода пароля.
