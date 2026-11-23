@@ -110,7 +110,7 @@ module.exports = async function handler(req, res) {
   const plan = [MODELS[0], MODELS[0]].concat(MODELS.slice(1));
   const until = Date.now() + 40000;
   try {
-    let r = null, data = {}, model = MODEL;
+    let r = null, data = {}, model = MODEL; const tried = [];
     for (let i = 0; i < plan.length; i++) {
       const left = until - Date.now();
       if (left < 3000) break;
@@ -126,12 +126,13 @@ module.exports = async function handler(req, res) {
         data = await r.json().catch(() => ({}));
       } catch (e) { r = null; data = {}; }
       clearTimeout(timer);
+      tried.push(model + ':' + (r ? r.status : 'net'));
       if (r && r.ok) break;
       if (r && !RETRY.has(r.status)) break;   // ошибка запроса или ключа: другая модель не поможет
       if (r && r.status === 404 && model === MODELS[0]) i++;   // основной модели нет — сразу к запасной
     }
-    if (!r) { res.status(502).json({ error: 'network' }); return; }
-    if (!r.ok) { res.status(502).json({ error: 'model', status: r.status, detail: (data.error && data.error.message || '').slice(0, 200) }); return; }
+    if (!r) { res.status(502).json({ error: 'network', tried: tried }); return; }
+    if (!r.ok) { res.status(502).json({ error: 'model', status: r.status, detail: (data.error && data.error.message || '').slice(0, 200), tried: tried }); return; }
     const text = ((data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [])
       .map((p) => p.text || '').join('').trim();
     if (!text) { res.status(502).json({ error: 'empty-answer' }); return; }
