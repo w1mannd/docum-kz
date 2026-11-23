@@ -312,6 +312,7 @@
     hire: { work_start: 'contract_date' },
     works: { start: 'date' },
     lease: { lease_start: 'date' },
+    dwelling: { lease_start: 'date' },
     remote: { work_start: 'date' }
   };
 

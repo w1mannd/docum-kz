@@ -402,7 +402,9 @@
   }
 
   function checkOne(f, id) { return L.checkField(f, id, state.data[id], state.data, state.code); }
-  function hintOf(id) { return window.tHas('h.' + id) ? t('h.' + id) : ''; }
+  // Подпись, подсказка или пример для поля: сначала своя для документа (f.dwelling.rent), затем общая.
+  function fkey(kind, id) { var k = kind + '.' + state.code + '.' + id; return window.tHas(k) ? k : kind + '.' + id; }
+  function hintOf(id) { var k = fkey('h', id); return window.tHas(k) ? t(k) : ''; }
   function sameText(a, b) { return a.replace(/\.$/, '') === b.replace(/\.$/, ''); }
 
   // Под полем всегда одна строка: подсказка либо сообщение проверки вместо неё.
@@ -437,10 +439,10 @@
       input = el('input');
       input.type = 'checkbox'; input.id = fid; input.checked = !!state.data[id];
       lab.appendChild(input);
-      lab.appendChild(el('span', null, t('f.' + id)));
+      lab.appendChild(el('span', null, t(fkey('f', id))));
       box.appendChild(lab);
     } else {
-      var label = el('label', 'label', t('f.' + id) + (f.optional ? ' ' + t('b.optional') : ''));
+      var label = el('label', 'label', t(fkey('f', id)) + (f.optional ? ' ' + t('b.optional') : ''));
       label.htmlFor = fid;
       box.appendChild(label);
       if (f.type === 'select') {
@@ -461,7 +463,7 @@
       }
       input.id = fid;
       input.autocomplete = 'off';
-      if (window.tHas('p.' + id)) input.placeholder = t('p.' + id);
+      if (window.tHas(fkey('p', id))) input.placeholder = t(fkey('p', id));
       input.value = state.data[id];
       box.appendChild(input);
     }
