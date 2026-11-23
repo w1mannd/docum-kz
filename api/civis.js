@@ -11,7 +11,7 @@ const index = new S.Index(NPA.units);
 
 // Модели закреплены в коде: точные имена версий, без псевдонимов вида «-latest», поэтому Google не подменит их другими.
 // Первая — основная. Если Google перегружен (503, 429, 500) или модель недоступна (404), берётся следующая.
-const MODELS = ['gemini-3.1-flash-lite', 'gemini-2.5-flash-lite', 'gemini-2.5-flash'];
+const MODELS = ['gemini-3.1-flash-lite', 'gemini-3.8-flash-lite', 'gemini-3.8-flash', 'gemini-3.1-flash'];
 const MODEL = MODELS[0];
 const RETRY = new Set([404, 429, 500, 503, 504]);
 const MAX_Q = 600, MAX_TURNS = 6, K = 6, MAX_CTX = 26000;
