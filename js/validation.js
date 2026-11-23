@@ -258,7 +258,38 @@
       if (isNaN(n) || n < 24) return err('e.leaveFull');
       return n > MAX_DAYS ? err('e.tooBig') : null;
     },
-    age: function (v) { return v === true ? null : err('e.age'); }
+    age: function (v) { return v === true ? null : err('e.age'); },
+    area: function (v) {
+      var n = parseNum(v);
+      if (isNaN(n) || n <= 0 || !/^\d+(\.\d{1,2})?$/.test(clean(v))) return err('e.area');
+      return n > 1000000 ? err('e.tooBig') : null;
+    },
+    // Аренда недвижимости на год и более подлежит госрегистрации (Закон РК № 310-III, ст. 5).
+    leaseMonths: function (v) {
+      var n = parseInt10(v);
+      if (isNaN(n) || n < 1) return err('e.posInt');
+      if (n > MAX_MONTHS) return err('e.tooBig');
+      return n >= 12 ? warn('w.leaseReg') : null;
+    },
+    monthDay: function (v) {
+      var n = parseInt10(v);
+      return (isNaN(n) || n < 1 || n > 31) ? err('e.monthDay') : null;
+    },
+    advance: function (v, d) {
+      var a = toTiyn(v), p = toTiyn(d.work_price);
+      if (isNaN(a) || a <= 0 || a > MAX_MONEY) return err('e.money');
+      return (!isNaN(p) && a > p) ? err('e.advance') : null;
+    },
+    // ИП не вправе давать заём гражданам (ГК РК, ст. 715 п. 2-1).
+    cpBusiness: function (v) { return v === true ? null : err('e.cpBusiness'); },
+    // Доверенность — не более трёх лет (ГК РК, ст. 168).
+    poaTerm: function (v, d) {
+      var from = parseISO(d.date), to = parseISO(v);
+      if (!from || !to) return null;
+      if (to.getTime() < from.getTime()) return err('e.poaBefore');
+      from.setUTCFullYear(from.getUTCFullYear() + 3);
+      return to.getTime() > from.getTime() ? err('e.poaTerm') : null;
+    }
   };
 
   // Поля, где дата не может быть раньше другой даты.
@@ -266,7 +297,11 @@
     end: ['start', 'e.dateOrder'],
     due: ['date', 'e.dateOrder'],
     year_to: ['year_from', 'e.dateOrder'],
-    term_date: ['contract_date', 'e.termDate']
+    term_date: ['contract_date', 'e.termDate'],
+    cancel_date: ['contract_date', 'e.termDate'],
+    valid_to: ['date', 'e.validTo'],
+    loan_return: ['date', 'e.loanReturn'],
+    trip_to: ['trip_from', 'e.dateOrder']
   };
 
   // Дата начала раньше даты договора не запрещена, но похожа на опечатку.
@@ -274,7 +309,10 @@
   var START_WARN = {
     services: { start: 'date' },
     employment: { work_start: 'date' },
-    hire: { work_start: 'contract_date' }
+    hire: { work_start: 'contract_date' },
+    works: { start: 'date' },
+    lease: { lease_start: 'date' },
+    remote: { work_start: 'date' }
   };
 
   function checkField(def, id, value, data, code) {
@@ -313,7 +351,15 @@
     return e;
   }
 
+  // Число календарных дней с первой по последнюю дату включительно.
+  function daysIncl(fromISO, toISO) {
+    var a = parseISO(fromISO), b = parseISO(toISO);
+    if (!a || !b || b < a) return NaN;
+    return Math.round((b - a) / 86400000) + 1;
+  }
+
   var api = {
+    daysIncl: daysIncl,
     CHECK_DATE: CHECK_DATE, VAT_RATE: VAT_RATE, MAX_MONEY: MAX_MONEY,
     isEmpty: isEmpty, parseNum: parseNum, parseInt10: parseInt10, toTiyn: toTiyn,
     parseISO: parseISO, fmtDate: fmtDate, addDays: addDays, leaveDates: leaveDates,

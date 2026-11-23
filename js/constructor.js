@@ -604,8 +604,9 @@
       line(box, t('b.leaveBack'), r ? L.fmtDate(r.back) : '—', true);
       return;
     }
-    if (kind === 'price') {
-      var p = L.toTiyn(d.price);
+    if (kind !== 'items') {
+      // Итог по одному полю суммы: price, rent, work_price.
+      var p = L.toTiyn(d[kind]);
       tt = L.totals(isNaN(p) ? 0 : p, d.vat);
     } else {
       tt = L.calcItems(d[itemsField()], d.vat);
