@@ -395,9 +395,9 @@ button.step-btn { cursor: pointer; }
   /* Пока заполняется документ, нижнее меню скрыто: внизу экрана только кнопки шагов. */
   /* Нижнее меню: движение. Прячется в конструкторе и при прокрутке вниз. */
   /* Меню прячется только сдвигом, без смены прозрачности: на iOS стекло с тенью при одновременной анимации
-     прозрачности и сдвига оставляло серый след. Отдельный слой (will-change) убирает перерисовку фона. */
-  .tab-bar { will-change: transform; transform: translateZ(0); transition: transform .42s cubic-bezier(.32, .72, 0, 1); }
-  .tab-bar.is-hidden, .is-building .tab-bar { transform: translate3d(0, calc(100% + var(--tab-gap) + 24px), 0); pointer-events: none; transition: transform .36s cubic-bezier(.32, .72, 0, 1); }
+     прозрачности и сдвига оставляло серый след. will-change и translateZ не ставим: в Safari стекло с ними исчезает при прокрутке. */
+  .tab-bar { transition: transform .42s cubic-bezier(.32, .72, 0, 1); }
+  .tab-bar.is-hidden, .is-building .tab-bar { transform: translateY(calc(100% + var(--tab-gap) + 24px)); pointer-events: none; transition: transform .36s cubic-bezier(.32, .72, 0, 1); }
   /* Подсветка раздела — в разметке, место задаёт CSS по выбранной вкладке: видна с первого кадра и не съезжает. */
   .tab-ind { position: absolute; z-index: 0; top: 4px; bottom: 4px; left: 4px; width: calc((100% - 8px) / 5); border-radius: 999px; background: rgba(120, 120, 128, .2); pointer-events: none; opacity: 0; transform: translateX(calc(var(--ti, 0) * 100%)); transition: transform .5s cubic-bezier(.3, 1.25, .4, 1), opacity .2s ease; }
   .tab-bar:has(.tab[aria-current]) .tab-ind { opacity: 1; }

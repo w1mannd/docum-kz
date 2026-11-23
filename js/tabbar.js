@@ -33,15 +33,16 @@
     setTimeout(function () { window.location.href = tab.href; }, 120);
   });
 
-  // Прокрутка: вниз — меню прячется, вверх или у краёв страницы — возвращается.
-  var lastY = window.scrollY, ticking = false;
+  // Прокрутка: меню прячется только после заметной прокрутки вниз (больше 120 px подряд),
+  // возвращается при любой прокрутке вверх и у краёв страницы. Мелкие движения пальцем меню не трогают.
+  var lastY = window.scrollY, down = 0, ticking = false;
   function onScroll() {
     ticking = false;
     var y = window.scrollY, dy = y - lastY;
+    lastY = y;
     var nearEnd = window.innerHeight + y >= document.documentElement.scrollHeight - 40;
-    if (y < 80 || nearEnd || dy < -6) bar.classList.remove('is-hidden');
-    else if (dy > 6) bar.classList.add('is-hidden');
-    if (Math.abs(dy) > 6 || y < 80) lastY = y;
+    if (y < 80 || nearEnd || dy < -4) { down = 0; bar.classList.remove('is-hidden'); return; }
+    if (dy > 0) { down += dy; if (down > 120) bar.classList.add('is-hidden'); }
   }
   window.addEventListener('scroll', function () {
     if (reduce.matches || !phone.matches) return;
