@@ -9,8 +9,11 @@ const S = require('../js/civis-search.js');
 const NPA = require('../npa/npa.json');
 const index = new S.Index(NPA.units);
 
-// Модель закреплена в коде: точное имя версии, без псевдонимов вида «-latest», поэтому Google не подменит её другой.
-const MODEL = 'gemini-3.1-flash-lite';
+// Модели закреплены в коде: точные имена версий, без псевдонимов вида «-latest», поэтому Google не подменит их другими.
+// Первая — основная. Если Google перегружен (503, 429, 500) или модель недоступна (404), берётся следующая.
+const MODELS = ['gemini-3.1-flash-lite', 'gemini-2.5-flash-lite', 'gemini-2.5-flash'];
+const MODEL = MODELS[0];
+const RETRY = new Set([404, 429, 500, 503, 504]);
 const MAX_Q = 600, MAX_TURNS = 6, K = 6, MAX_CTX = 26000;
 const hits = new Map();   // простое ограничение частоты: не больше 20 вопросов за 10 минут с одного адреса
 
@@ -98,19 +101,36 @@ module.exports = async function handler(req, res) {
   }
   const sys = rules(lang) + '\n\n<site>\n' + DOCS[lang] + '\n</site>\n\n<npa>\n' + (ctx || '(подходящих фрагментов не найдено)') + '</npa>';
 
+  const payload = JSON.stringify({
+    systemInstruction: { parts: [{ text: sys }] },
+    contents: msgs.map((m) => ({ role: m.role, parts: [{ text: m.text }] })),
+    generationConfig: { temperature: 0.2, maxOutputTokens: 700 }
+  });
+  // Основная модель — до двух попыток, запасные — по одной. Всего не дольше 40 секунд.
+  const plan = [MODELS[0], MODELS[0]].concat(MODELS.slice(1));
+  const until = Date.now() + 40000;
   try {
-    const ac = new AbortController(); const timer = setTimeout(() => ac.abort(), 25000);
-    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(MODEL) + ':generateContent', {
-      method: 'POST', signal: ac.signal,
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: sys }] },
-        contents: msgs.map((m) => ({ role: m.role, parts: [{ text: m.text }] })),
-        generationConfig: { temperature: 0.2, maxOutputTokens: 700 }
-      })
-    });
-    clearTimeout(timer);
-    const data = await r.json();
+    let r = null, data = {}, model = MODEL;
+    for (let i = 0; i < plan.length; i++) {
+      const left = until - Date.now();
+      if (left < 3000) break;
+      if (i === 1) await new Promise((ok) => setTimeout(ok, 700));
+      model = plan[i];
+      const ac = new AbortController(); const timer = setTimeout(() => ac.abort(), Math.min(20000, left));
+      try {
+        r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent', {
+          method: 'POST', signal: ac.signal,
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
+          body: payload
+        });
+        data = await r.json().catch(() => ({}));
+      } catch (e) { r = null; data = {}; }
+      clearTimeout(timer);
+      if (r && r.ok) break;
+      if (r && !RETRY.has(r.status)) break;   // ошибка запроса или ключа: другая модель не поможет
+      if (r && r.status === 404 && model === MODELS[0]) i++;   // основной модели нет — сразу к запасной
+    }
+    if (!r) { res.status(502).json({ error: 'network' }); return; }
     if (!r.ok) { res.status(502).json({ error: 'model', status: r.status, detail: (data.error && data.error.message || '').slice(0, 200) }); return; }
     const text = ((data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [])
       .map((p) => p.text || '').join('').trim();
@@ -119,7 +139,7 @@ module.exports = async function handler(req, res) {
     const allowed = new Set(used.map((u) => (u.ref.match(/\d+/) || [''])[0]));
     const unknown = [...citedNums(text)].filter((n) => !allowed.has(n));
     const sources = used.filter((u) => text.indexOf(u.ref) >= 0 || text.indexOf(u.label) >= 0);
-    res.status(200).json({ text: text, sources: sources.length ? sources : used.slice(0, 2), unverified: unknown });
+    res.status(200).json({ text: text, model: model, sources: sources.length ? sources : used.slice(0, 2), unverified: unknown });
   } catch (e) {
     res.status(502).json({ error: 'network' });
   }
