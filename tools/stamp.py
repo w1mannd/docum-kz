@@ -49,3 +49,21 @@ for rule in conf.get('headers', []):
                     json.dump(conf, f, ensure_ascii=False, indent=2)
                     f.write('\n')
                 print('CSP: хэши встроенных скриптов обновлены')
+
+
+# Версия кэша сервис-воркера = хэш всех страниц (в них уже стоят версии css/js).
+# После каждой выкладки sw.js меняется, браузер ставит новый воркер, он заново кэширует
+# все страницы и удаляет старый кэш. Иначе страница, которую давно не открывали,
+# могла прийти из кэша со старыми скриптами (например, без названий новых документов).
+site = hashlib.md5()
+for page in sorted(glob.glob(os.path.join(ROOT, '*.html'))):
+    with open(page, 'rb') as f:
+        site.update(f.read())
+swp = os.path.join(ROOT, 'sw.js')
+with open(swp, encoding='utf-8') as f:
+    sw = f.read()
+sw_new = re.sub(r"const CACHE = 'docum-[\w]+';", "const CACHE = 'docum-%s';" % site.hexdigest()[:8], sw)
+if sw_new != sw:
+    with open(swp, 'w', encoding='utf-8') as f:
+        f.write(sw_new)
+    print('sw.js: версия кэша обновлена')
