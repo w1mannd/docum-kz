@@ -11,6 +11,8 @@ const hits = new Map();   // не больше 40 запросов за 10 ми�
 // БИН: 12 цифр, пятая — 4 (юрлицо-резидент), 5 (нерезидент) или 6 (ИП совместного предпринимательства).
 function isBin(s) { return /^\d{12}$/.test(s) && /[456]/.test(s[4]); }
 const str = (v) => (typeof v === 'string' ? v.trim().replace(/\s+/g, ' ').slice(0, 300) : '');
+// Название в реестре идёт с прямыми кавычками: в документах сайта — «ёлочки».
+const quotes = (s) => s.replace(/"([^"]+)"/g, '«$1»');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
@@ -35,7 +37,7 @@ module.exports = async function handler(req, res) {
     if (!row) { res.status(404).json({ error: 'none' }); return; }
     res.status(200).json({
       bin,
-      name: { ru: str(row.nameru), kk: str(row.namekz) },
+      name: { ru: quotes(str(row.nameru)), kk: quotes(str(row.namekz)) },
       addr: { ru: str(row.addressru), kk: str(row.addresskz) },
       status: { ru: str(row.statusru), kk: str(row.statuskz) },
       source: 'data.egov.kz'
