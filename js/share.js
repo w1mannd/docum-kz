@@ -6,7 +6,7 @@
 (function () {
   'use strict';
   var ST = window.DocumStore, EX = window.DocumExport, TPL = window.DocumTemplates, L = window.DocumLogic;
-  var E = window.DocumEcp, PA = window.DocumPades, AG = window.DocumAgree;
+  var E = window.DocumEcp, PA = window.DocumPades, AG = window.DocumAgree, BX = window.DocumBox;
   var app = document.getElementById('share-app');
   if (!app || !ST) return;
   var t = window.t;
@@ -49,6 +49,21 @@
     return row;
   }
   function reply(res) { return ST.encode(res).then(function (code) { return location.origin + location.pathname + '#' + code; }); }
+  // Ответ второй стороны. По короткой ссылке он сам ложится в зашифрованный ящик, и отправитель получит его без ссылок.
+  // По длинной ссылке (или если ящик недоступен) — ответная ссылка, как раньше. Возвращает строку кнопок.
+  function send(out, res, title, lead) {
+    var viaLink = function () { return reply(res).then(function (url) { return linkBox(out, url, title, lead); }); };
+    if (!payload._box || !BX) return viaLink();
+    out.textContent = ''; out.appendChild(el('p', 'msg', t('bx.sending')));
+    return BX.put(payload._box, res).then(function () {
+      out.textContent = '';
+      out.appendChild(el('h3', 'sp-ready', title === t('sp.reply') ? t('bx.sentTitle') : title));
+      out.appendChild(el('p', 'notice ag-ok', t('bx.sentAuto')));
+      var row = el('div', 'sh-row'); out.appendChild(row);
+      out.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return row;
+    }, viaLink);
+  }
   function old() {
     app.textContent = '';
     app.appendChild(el('h1', null, t('sp.title')));
@@ -66,6 +81,10 @@
     head.appendChild(el('h1', null, t('d.' + p.code) + (p.number ? ' № ' + p.number : '')));
     if (p.from) head.appendChild(el('p', 'lead', f('sp.from', { n: p.from })));
     app.appendChild(head);
+    if (p._done && p._done.length) {
+      var dn = p._done.indexOf('sign') >= 0 ? 'bx.doneSign' : p._done.indexOf('fill') >= 0 ? 'bx.doneFill' : 'bx.doneChange';
+      app.appendChild(el('p', 'notice ag-ok', t(dn)));
+    }
     var wrap = el('div', 'sp-grid');
     var side = el('div', 'sp-side'), doc = el('div', 'sp-doc');
     var sheet = sheetOf(blocks, p.lang);
@@ -104,6 +123,10 @@
       });
       fb.appendChild(lab); fb.appendChild(inp); fb.appendChild(m);
       box.appendChild(fb);
+      if (id === 'cp_bin' && window.DocumBin) window.DocumBin.attach({
+        input: inp, host: fb, lang: function () { return p.lang; },
+        set: function (k, v) { var n = document.getElementById('sp-' + k); if (n) { n.value = v; n.dispatchEvent(new Event('input')); } else data[k] = v; }
+      });
     });
     var msg = el('p', 'msg msg-error'), out = el('div', 'sh-out');
     box.appendChild(btn('btn btn-primary', t('sp.sendFill'), function () {
@@ -111,8 +134,7 @@
       if (bad.length) { msg.textContent = t('sp.fix'); return; }
       msg.textContent = '';
       var only = {}; fields.forEach(function (id) { if (data[id] != null) only[id] = data[id]; });
-      reply({ t: 'r', v: 2, mode: 'fill', id: p.id, n: p.n, code: p.code, lang: p.lang, number: p.number, at: Date.now(), data: only })
-        .then(function (url) { linkBox(out, url, t('sp.reply'), t('sp.replyFill')); });
+      send(out, { t: 'r', v: 2, mode: 'fill', id: p.id, n: p.n, code: p.code, lang: p.lang, number: p.number, at: Date.now(), data: only }, t('sp.reply'), t('sp.replyFill'));
     }));
     box.appendChild(el('p', 'jr-note', t('sp.fillNote')));
     box.appendChild(msg); box.appendChild(out);
@@ -177,9 +199,8 @@
           var pdf = PA.embed(prep2, E.unb64(y.cms)), name = 'docum-' + p.code + '-' + (p.number || 'doc') + '-signed-2.pdf';
           EX.saveBlob(new Blob([pdf], { type: 'application/pdf' }), name);
           go.remove(); agreeL.remove(); msg.textContent = '';
-          return reply({ t: 'r', v: 2, mode: 'sign', id: p.id, n: p.n, code: p.code, lang: p.lang, number: p.number, hash: p.hash, at: at2, reserve: AG.RESERVE, base: AG.tag(p.sig.cms), cms: y.cms })
-            .then(function (url) {
-              var row = linkBox(out, url, t('sp.signed'), t('sp.signedLead'));
+          return send(out, { t: 'r', v: 2, mode: 'sign', id: p.id, n: p.n, code: p.code, lang: p.lang, number: p.number, hash: p.hash, at: at2, reserve: AG.RESERVE, base: AG.tag(p.sig.cms), cms: y.cms }, t('sp.signed'), t('sp.signedLead'))
+            .then(function (row) {
               row.appendChild(btn('btn btn-ghost', t('ag.dl2'), function () { EX.saveBlob(new Blob([pdf], { type: 'application/pdf' }), name); }));
             });
         }).catch(function (e) {
@@ -206,8 +227,7 @@
       var text = ta.value.trim();
       if (!text) { cm.textContent = t('sp.proposeNeed'); return; }
       cm.textContent = '';
-      reply({ t: 'r', v: 2, mode: 'change', id: p.id, n: p.n, code: p.code, lang: p.lang, number: p.number, at: Date.now(), text: text })
-        .then(function (url) { linkBox(out, url, t('sp.reply'), t('sp.replyChange')); });
+      send(out, { t: 'r', v: 2, mode: 'change', id: p.id, n: p.n, code: p.code, lang: p.lang, number: p.number, at: Date.now(), text: text }, t('sp.reply'), t('sp.replyChange'));
     }));
     ch.appendChild(cm);
     box.appendChild(ch);
@@ -256,7 +276,24 @@
     else if (payload.t === 'r' && ok) renderResponse(payload);
     else fail();
   }
+  // Короткая ссылка: читаем ящик. Последний запрос отправителя — то, что нужно сделать; ответ после него — уже отправлен.
+  function fromBox(box) {
+    app.textContent = ''; app.appendChild(el('p', 'msg', t('bx.opening')));
+    BX.read(box).then(function (r) {
+      var qi = -1;
+      r.list.forEach(function (m, i) { if (m && m.t === 'q') qi = i; });
+      if (qi < 0) return fail(false);
+      payload = r.list[qi]; payload._box = box;
+      payload._done = r.list.slice(qi + 1).filter(function (m) { return m && m.t === 'r'; }).map(function (m) { return m.mode; });
+      render();
+    }, function (e) {
+      if (e && e.status === 404) { app.textContent = ''; app.appendChild(el('h1', null, t('sp.title'))); app.appendChild(el('p', 'notice notice-warn', t('bx.gone'))); }
+      else fail(false);
+    });
+  }
+  var boxRef = BX && BX.parse(raw);
   if (!raw) fail(true);
+  else if (boxRef) fromBox(boxRef);
   else ST.decode(raw).then(function (p) { payload = p; render(); }).catch(function () { fail(false); });
   document.addEventListener('docum:lang', function () { if (payload) render(); });
 })();

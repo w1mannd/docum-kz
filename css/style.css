@@ -702,6 +702,15 @@ a.card:hover .more::after { transform: translateX(4px); }
 .sh-box .panel-title { font-size: 22px; }
 .sh-modes { display: grid; gap: 4px; }
 .sh-link { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; word-break: break-all; }
+.bx-qr { display: flex; align-items: center; gap: 14px; margin-top: 12px; }
+.bx-qr svg { width: 148px; height: 148px; flex: none; border-radius: 8px; border: 1px solid var(--line); }
+.bx-qr .jr-note { margin: 0; }
+.bx-auto { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 12px; }
+.bx-auto .jr-note { flex: 1 1 100%; margin: 0; }
+.bin-fill { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 6px; }
+.bin-fill .msg { margin: 0; }
+.review-send { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+.review-send > .btn-primary { width: auto; }
 .sh-row { display: flex; flex-wrap: wrap; gap: 10px; }
 .sh-out:empty { display: none; }
 .ag-pair { display: grid; gap: 10px; }

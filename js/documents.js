@@ -248,8 +248,17 @@
       ST.all().then(function (rows) {
         all = rows; drawStats(); draw();
         if (location.hash === '#drafts' && drafts.childNodes.length) drafts.scrollIntoView({ block: 'start' });
+        // Ответы вторых сторон из зашифрованных ящиков приходят сами: проверяем открытые ящики при каждом открытии журнала.
+        var open = rows.filter(function (r) { return r.box && !r.box.closed; });
+        if (open.length && !polled) {
+          polled = true;
+          Promise.all(open.map(function (r) { return AG.poll(r).catch(function () { return 0; }); })).then(function (ns) {
+            if (ns.some(Boolean) && !rec) load();
+          });
+        }
       });
     }
+    var polled = false;
     load();
   }
 
@@ -505,135 +514,48 @@
   // Подпись на ссылке — ЭЦП отправителя, проверенная сайтом. Нарисованных отметок нет: юридической силы у них нет.
   // Без ЭЦП можно только запросить у второй стороны реквизиты — это сбор данных, не согласование.
   var AG = window.DocumAgree;
-  function digits(s) { return String(s || '').replace(/\D/g, ''); }
-  function shareUrl(code) { return location.origin + location.pathname.replace(/documents\.html$/, '') + 'share.html#' + code; }
-  function linkOut(out, url) {
-    out.textContent = '';
-    var field = el('textarea', 'input sh-link'); field.readOnly = true; field.rows = 3; field.value = url;
-    out.appendChild(field);
-    // Лимит одного сообщения Telegram — 4096 символов.
-    var fits = url.length <= 4000, meter = el('div', 'sh-meter' + (fits ? '' : ' is-long'));
-    var bar = el('span'); bar.style.width = Math.min(100, url.length / 40) + '%'; meter.appendChild(bar);
-    out.appendChild(meter);
-    out.appendChild(el('p', 'jr-note', f('dm.long', { n: url.length }) + ' · ' + t(fits ? 'dm.okLen' : 'dm.longLen')));
-    var row = el('div', 'sh-row');
-    row.appendChild(btn('btn btn-primary', t('dm.copy'), function (e) {
-      var b = e.currentTarget;
-      (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(function () { b.textContent = t('dm.copied'); }, function () { field.select(); document.execCommand('copy'); b.textContent = t('dm.copied'); });
-    }));
-    if (navigator.share) row.appendChild(btn('btn btn-ghost', t('dm.shareBtn'), function () { navigator.share({ title: titleOf(rec), url: url }).catch(function () {}); }));
-    // Запасной путь для длинных ссылок: тот же запрос файлом, его открывают на странице share.html.
-    row.appendChild(btn('btn btn-ghost', t('dm.file'), function () {
-      var code = url.slice(url.indexOf('#') + 1);
-      var blob = new Blob([JSON.stringify({ app: 'docum.kz', kind: 'share', data: code })], { type: 'application/json' });
-      var a = document.createElement('a'), u = URL.createObjectURL(blob);
-      a.href = u; a.download = 'docum-' + rec.code + '-' + (rec.number || rec.id.slice(0, 6)) + '.docum.json';
-      document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(u); }, 2000);
-    }));
-    out.appendChild(row);
-  }
-  // Подпись ЭЦП отправителя: тот же PAdES, что во вкладке «ЭЦП». Готовая подпись той же версии используется повторно.
-  function sigOk(r) { return r && r.digest === 'ok' && r.crypto !== 'fail' && r.valid !== false && !(r.ocsp && (r.ocsp.status === 'unknown' || (r.ocsp.status === 'revoked' && !(r.tsp && r.tsp.time && r.ocsp.revokedAt && r.tsp.time < r.ocsp.revokedAt)))); }
-  function senderMatch(r, data) { return AG.matchSender(r, data); }
-  function signSelf(v) {
-    var prep = null, stampB = E.stamp({ time: Date.now() }, v.lang || rec.lang);
-    return padesOf(v, stampB, TSP_RESERVE).then(function (pp) {
-      prep = pp;
-      return E.sign(E.b64(prep.toSign), true);
-    }).then(function (cms) {
-      return ecpRecord(cms, 'self', { kind: 'pades', content: prep.toSign, stamp: stampB, reserve: TSP_RESERVE });
-    }).then(function (r) {
-      rec.ecp = rec.ecp || []; rec.ecp.push(r);
-      logEv('signed', { id: rec.id, n: r.n, s: r.tsp ? 'tsp' : '' });
-      return ST.put(rec).then(function () { return r; });
+  // Новые ответы из ящика документа: журнал обновляется, карточка перерисовывается.
+  function pollDoc(force) {
+    if (!rec || !rec.box || rec.box.closed) return Promise.resolve(0);
+    var id = rec.id;
+    return AG.poll(rec).then(function (n) {
+      if (!n && !force) return 0;
+      return ST.get(id).then(function (r) {
+        if (rec && rec.id === id && r) {
+          rec = r; model = null; renderDoc();
+          if (n) { var hd = app.querySelector('.jr-hero'), nt = el('p', 'notice ag-ok', f('bx.arrived', { n: n })); nt.setAttribute('role', 'status'); if (hd) hd.after(nt); }
+        }
+        return n;
+      });
     });
   }
   function renderShare(panel) {
-    var v = last(rec), data = v.data || {}, fields = AG.partyFields(rec.code);
-    var miss = AG.missing(rec.code, data), canFill = fields.length && !v.edited;
-    var box = el('section', 'sh-box');
-    box.appendChild(el('h2', 'panel-title', t('dm.shTitle')));
-    box.appendChild(el('p', 'lead-s', t('dm.shLead')));
-    var mode = miss.length && canFill ? 'fill' : 'sign';
-    var step = function (n, title) { var h = el('h3', 'sh-step'); h.appendChild(el('span', 'sh-num', String(n))); h.appendChild(el('span', null, title)); return h; };
-    box.appendChild(step(1, t('dm.step1')));
-    var modes = el('div', 'sh-modes'), make = btn('btn btn-primary');
-    var setMake = function () { make.textContent = t(mode === 'sign' ? 'dm.makeSign' : 'dm.make'); };
-    [['sign', 'dm.mSign', 'dm.mSignD'], ['fill', 'dm.mFill', 'dm.mFillD']].forEach(function (m) {
-      if (m[0] === 'fill' && !fields.length) return;
-      var lab = el('label', 'sh-mode'); var r = el('input'); r.type = 'radio'; r.name = 'sh-mode'; r.value = m[0];
-      r.checked = m[0] === mode; r.disabled = (m[0] === 'fill' && !canFill) || (m[0] === 'sign' && miss.length > 0);
-      r.addEventListener('change', function () { mode = m[0]; setMake(); });
-      var tx = el('span'); tx.appendChild(el('b', null, t(m[1]))); tx.appendChild(el('span', null, t(m[2])));
-      lab.appendChild(r); lab.appendChild(tx); modes.appendChild(lab);
-    });
-    box.appendChild(modes);
-    if (miss.length) box.appendChild(el('p', 'notice notice-warn', f('dm.needFill', { f: miss.map(function (id) { return t('f.' + id); }).join(', ') })));
-    if (fields.length && !canFill) box.appendChild(el('p', 'jr-note', t('dm.noFill')));
-    box.appendChild(step(2, t('dm.step2')));
-    box.appendChild(el('p', 'notice notice-warn', t('dm.pdWarn')));
-    var okL = el('label', 'check'); var ok = el('input'); ok.type = 'checkbox';
-    okL.appendChild(ok); okL.appendChild(el('span', null, t('dm.pdOk'))); box.appendChild(okL);
-    box.appendChild(step(3, t('dm.step3')));
-    setMake();
-    var out = el('div', 'sh-out'), msg = el('p', 'msg'); msg.setAttribute('role', 'status');
-    box.appendChild(make); box.appendChild(msg);
-    var inst = el('p', 'jr-note'); inst.appendChild(document.createTextNode(t('dm.ecpNeed') + ' '));
-    var na = el('a', null, 'ncl.pki.gov.kz'); na.href = 'https://ncl.pki.gov.kz/'; na.target = '_blank'; na.rel = 'noopener'; inst.appendChild(na);
-    box.appendChild(inst);
-    box.appendChild(out);
-    function sent(m, extra) {
-      rec.shares = rec.shares || [];
-      rec.shares.push(Object.assign({ at: Date.now(), n: v.n, mode: m }, extra || {}));
-      if (rec.status !== 'signed') rec.status = 'sent';
+    panel.appendChild(AG.sharePanel(rec, { onSent: function (r) {
+      rec = r;
       var badge = app.querySelector('.jr-hero .jr-badge');
       if (badge && rec.status === 'sent') { badge.className = 'jr-badge jr-sent'; badge.textContent = t('dm.s.sent'); }
-      logEv('shared', { id: rec.id, n: v.n, s: m });
-      return ST.put(rec);
-    }
-    make.addEventListener('click', function () {
-      if (!ok.checked) { flash(msg, t('dm.needOk'), true); return; }
-      var lang = v.lang || rec.lang;
-      // В ссылке — данные анкеты и правки относительно шаблона; получатель собирает документ и сверяет отпечаток.
-      var payload = { t: 'q', v: 2, id: rec.id, n: v.n, code: rec.code, lang: lang, number: rec.number, mode: mode,
-        from: data.ip_name || '', hash: v.hash, at: Date.now(), vat: v.at, data: data };
-      if (v.edited) payload.patch = ST.patch(TPL.build(rec.code, data, lang), v.blocks);
-      if (mode === 'fill') {
-        payload.fields = fields;
-        ST.encode(payload).then(function (code) { flash(msg, t('dm.fillReady')); linkOut(out, shareUrl(code)); return sent('fill'); });
-        return;
-      }
-      if (miss.length) { flash(msg, t('dm.needFillShort'), true); return; }
-      make.disabled = true; flash(msg, t('ec.prep'));
-      var own = (rec.ecp || []).filter(function (r) { return r.who === 'self' && r.kind === 'pades' && r.n === v.n && sigOk(r) && senderMatch(r, data) !== false; }).pop();
-      (own ? Promise.resolve(own) : (flash(msg, t('ec.confirm')), signSelf(v))).then(function (r) {
-        if (r.n !== v.n || !sigOk(r)) throw { code: 'sig' };
-        if (senderMatch(r, data) === false) throw { code: 'who', a: [r.iin, [r.cn, r.given].filter(Boolean).join(' ')].filter(Boolean).join(', ') };
-        payload.sig = { cms: r.cms, stamp: r.stamp, reserve: r.reserve };
-        return ST.encode(payload).then(function (code) {
-          make.disabled = false;
-          flash(msg, f('dm.signedReady', { n: [r.cn, r.given].filter(Boolean).join(' ') }));
-          linkOut(out, shareUrl(code));
-          return sent('sign', { base: rec.ecp.indexOf(r) });
-        });
-      }).catch(function (e) {
-        make.disabled = false;
-        var c = e && e.code;
-        flash(msg, c === 'who' ? f('dm.whoBad', { a: e.a || '—', b: data.ip_iin || data.ip_fio || '—' }) : c === 'sig' ? t('dm.sigBad') : AG.errText(e), true);
-      });
-    });
-    panel.appendChild(box);
+    } }));
 
     // Ответы второй стороны: подписи ЭЦП, присланные реквизиты и предложения правок.
     var sg = el('section', 'sh-box');
     sg.appendChild(el('h2', 'panel-title', t('dm.signs')));
+    if (rec.box && !rec.box.closed) {
+      var auto = el('div', 'bx-auto'), am = el('p', 'msg');
+      auto.appendChild(el('p', 'jr-note', t('bx.auto')));
+      var chk = btn('btn btn-ghost', t('bx.check'), function () {
+        chk.disabled = true; flash(am, t('ag.checking'));
+        pollDoc(true).then(function (n) { chk.disabled = false; if (!n) flash(am, t('bx.none')); });
+      });
+      auto.appendChild(chk); auto.appendChild(am);
+      sg.appendChild(auto);
+    }
     var mine = (rec.ecp || []).filter(function (r) { return r.who === 'self' && r.kind === 'pades'; });
     var theirs = (rec.ecp || []).filter(function (r) { return r.kind === 'pades2'; });
     if (!theirs.length) sg.appendChild(el('p', 'jr-note', t(mine.length ? 'dm.waitOther' : 'dm.noSigns')));
     theirs.forEach(function (r) {
       var base = rec.ecp[r.base], vv = rec.versions[r.n - 1];
       var item = el('div', 'ag-pair');
-      if (base) item.appendChild(AG.card(base, t('sg.me'), { who: senderMatch(base, (vv && vv.data) || {}) }));
+      if (base) item.appendChild(AG.card(base, t('sg.me'), { who: AG.matchSender(base, (vv && vv.data) || {}) }));
       item.appendChild(AG.card(r, t('sg.other'), { who: r.match, id: AG.expected((vv && vv.data) || {}) }));
       var dlb = btn('btn btn-primary', '', function () {
         dlb.disabled = true;
@@ -653,10 +575,12 @@
       sg.appendChild(it);
     });
 
+    var impHost = sg;
+    if (rec.box) { impHost = el('details', 'ag-propose'); impHost.appendChild(el('summary', null, t('bx.manual'))); sg.appendChild(impHost); }
     var impL = el('label', 'label', t('dm.import')); impL.htmlFor = 'sh-import';
     var imp = el('textarea', 'input'); imp.id = 'sh-import'; imp.rows = 2; imp.placeholder = 'https://…/share.html#…';
     var impB = btn('btn btn-ghost', t('dm.importBtn')), impMsg = el('p', 'msg');
-    sg.appendChild(impL); sg.appendChild(imp); sg.appendChild(impB); sg.appendChild(impMsg);
+    impHost.appendChild(impL); impHost.appendChild(imp); impHost.appendChild(impB); impHost.appendChild(impMsg);
     impB.addEventListener('click', function () {
       var s = imp.value.trim(), k = s.indexOf('#');
       if (k < 0) { flash(impMsg, t('dm.badLink'), true); return; }
@@ -938,6 +862,7 @@
       ST.get(id).then(function (r) {
         if (!r) { renderList(); return; }
         rec = r; renderDoc();
+        pollDoc();
       });
     } else renderList();
   });

@@ -468,6 +468,16 @@
       box.appendChild(input);
     }
     box.appendChild(fieldMessage(id));
+    // БИН контрагента-юрлица: название и адрес можно подставить из открытых данных (data.egov.kz).
+    if (id === 'cp_bin' && window.DocumBin) window.DocumBin.attach({
+      input: input, host: box,
+      lang: function () { return state.docLang || window.getLang(); },
+      set: function (k, v) {
+        state.data[k] = v;
+        var n = document.getElementById('f-' + k);
+        if (n) { n.value = v; n.dispatchEvent(new Event('input')); }
+      }
+    });
     input.setAttribute('aria-describedby', 'm-' + id);
     if (state.msgs[id] && state.msgs[id].type === 'error') input.setAttribute('aria-invalid', 'true');
 
@@ -707,6 +717,28 @@
     again.type = 'button';
     again.addEventListener('click', function () { start(state.code); scrollTop(); });
     acts.appendChild(again);
+    // Отправить на подпись ЭЦП прямо отсюда: документ уже в журнале, панель та же, что в «Моих документах».
+    var AG = window.DocumAgree;
+    if (AG && window.DocumEcp) {
+      var sendHost = el('div', 'review-send');
+      var sendBtn = el('button', 'btn btn-primary', t('b.sendSign'));
+      sendBtn.type = 'button';
+      sendBtn.addEventListener('click', function () {
+        sendBtn.disabled = true;
+        saveToJournal().then(function (rec) {
+          if (!rec) { sendBtn.disabled = false; return null; }
+          return window.DocumStore.get(rec.id);
+        }).then(function (rec) {
+          if (!rec) return;
+          sendHost.textContent = '';
+          sendHost.appendChild(AG.sharePanel(rec, { onSent: function (r) { markSaved(r); } }));
+          sendHost.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        });
+      });
+      sendHost.appendChild(sendBtn);
+      sendHost.appendChild(el('p', 'jr-note', t('b.sendSignNote')));
+      main.appendChild(sendHost);
+    }
     saveToJournal();
   }
 
