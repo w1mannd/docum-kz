@@ -4,7 +4,7 @@
    Версию кэша (CACHE) ставит tools/stamp.py по хэшу страниц: после выкладки старый кэш удаляется целиком.
    /api/ (OCSP НУЦ, Civis AI) и чужие адреса не трогаются. Данные пользователя здесь не хранятся: только файлы сайта. */
 'use strict';
-const CACHE = 'docum-212dcd63';
+const CACHE = 'docum-ae247365';
 const PAGES = ['/', '/constructor.html', '/documents.html', '/legal.html', '/verify.html', '/about.html', '/profile.html', '/share.html', '/404.html'];
 
 self.addEventListener('install', (e) => {

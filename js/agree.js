@@ -226,14 +226,16 @@
       return ST.encode(payload).then(function (code) { return { url: location.origin + '/share.html#' + code, box: false }; });
     });
   }
+  // Готовая ссылка: пояснение, затем одна строка — ссылка и кнопки рядом с ней.
   function linkOut(out, res, rec) {
     out.textContent = '';
     var url = res.url;
-    out.appendChild(el('p', 'notice ' + (res.box ? 'ag-ok' : 'notice-info'), t(res.box ? (res.same ? 'bx.same' : 'bx.short') : 'bx.long')));
-    var field = el('input', 'input sh-link'); field.readOnly = true; field.value = url;
-    if (!res.box) { field = el('textarea', 'input sh-link'); field.readOnly = true; field.rows = 3; field.value = url; }
-    out.appendChild(field);
-    var row = el('div', 'sh-row');
+    out.appendChild(el('p', 'jr-note', t(res.box ? (res.same ? 'bx.same' : 'bx.short') : 'bx.long')));
+    var row = el('div', 'sh-linkrow');
+    var field = res.box ? el('input', 'input sh-link') : el('textarea', 'input sh-link');
+    field.readOnly = true; field.value = url; if (!res.box) field.rows = 3;
+    field.addEventListener('focus', function () { field.select(); });
+    if (res.box) row.appendChild(field); else out.appendChild(field);
     row.appendChild(btn('btn btn-primary', t('dm.copy'), function (e) {
       var b = e.currentTarget;
       (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(function () { b.textContent = t('dm.copied'); }, function () { field.select(); document.execCommand('copy'); b.textContent = t('dm.copied'); });
@@ -247,10 +249,6 @@
       }));
     }
     out.appendChild(row);
-    if (res.box && root.DocumQR) {
-      var qr = el('div', 'bx-qr'); qr.appendChild(root.DocumQR.svg(url)); qr.appendChild(el('p', 'jr-note', t('bx.qr')));
-      out.appendChild(qr);
-    }
   }
   // Блок «Отправить на подпись». opt.onSent(rec) — после создания ссылки.
   function sharePanel(rec, opt) {
@@ -288,7 +286,10 @@
     var na = el('a', null, 'ncl.pki.gov.kz'); na.href = 'https://ncl.pki.gov.kz/'; na.target = '_blank'; na.rel = 'noopener'; inst.appendChild(na);
     box.appendChild(inst);
     box.appendChild(out);
+    // Ссылка готова: кнопка создания и подсказка про NCALayer больше не нужны — остаётся статус и ссылка.
+    function done() { make.hidden = true; inst.hidden = true; box.classList.add('sh-done'); }
     function sent(m, res, extra) {
+      done();
       rec.shares = rec.shares || [];
       rec.shares.push(Object.assign({ at: Date.now(), n: v.n, mode: m, box: !!res.box }, extra || {}));
       if (rec.status !== 'signed') rec.status = 'sent';
