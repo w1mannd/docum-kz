@@ -442,7 +442,7 @@
       lab.appendChild(el('span', null, t(fkey('f', id))));
       box.appendChild(lab);
     } else {
-      var label = el('label', 'label', t(fkey('f', id)) + (f.optional ? ' ' + t('b.optional') : ''));
+      var label = el('label', 'label', t(fkey('f', id)) + (f.optional ? ' ' + t('b.optional') : f.later ? ' ' + t('b.later') : ''));
       label.htmlFor = fid;
       box.appendChild(label);
       if (f.type === 'select') {

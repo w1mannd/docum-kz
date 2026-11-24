@@ -501,113 +501,157 @@
   /* ---------- Ссылка и согласование ---------- */
   // Свои данные вписывает вторая сторона договора, счёта и акта, а в трудовом договоре — работник.
   // Приказы и справку оформляет работодатель: там вторая сторона только знакомится и согласует.
-  var FILLABLE = { services: 1, invoice: 1, act: 1, employment: 1 };
-  function partyFields(code) {
-    var out = [];
-    if (!FILLABLE[code]) return out;
-    TPL.DOCS[code].steps.forEach(function (s) { s.fields.forEach(function (fid) { if (/^(cp_|w_)/.test(fid)) out.push(fid); }); });
-    return out;
+  /* ---------- Отправка по ссылке: только с ЭЦП ---------- */
+  // Подпись на ссылке — ЭЦП отправителя, проверенная сайтом. Нарисованных отметок нет: юридической силы у них нет.
+  // Без ЭЦП можно только запросить у второй стороны реквизиты — это сбор данных, не согласование.
+  var AG = window.DocumAgree;
+  function digits(s) { return String(s || '').replace(/\D/g, ''); }
+  function shareUrl(code) { return location.origin + location.pathname.replace(/documents\.html$/, '') + 'share.html#' + code; }
+  function linkOut(out, url) {
+    out.textContent = '';
+    var field = el('textarea', 'input sh-link'); field.readOnly = true; field.rows = 3; field.value = url;
+    out.appendChild(field);
+    // Лимит одного сообщения Telegram — 4096 символов.
+    var fits = url.length <= 4000, meter = el('div', 'sh-meter' + (fits ? '' : ' is-long'));
+    var bar = el('span'); bar.style.width = Math.min(100, url.length / 40) + '%'; meter.appendChild(bar);
+    out.appendChild(meter);
+    out.appendChild(el('p', 'jr-note', f('dm.long', { n: url.length }) + ' · ' + t(fits ? 'dm.okLen' : 'dm.longLen')));
+    var row = el('div', 'sh-row');
+    row.appendChild(btn('btn btn-primary', t('dm.copy'), function (e) {
+      var b = e.currentTarget;
+      (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(function () { b.textContent = t('dm.copied'); }, function () { field.select(); document.execCommand('copy'); b.textContent = t('dm.copied'); });
+    }));
+    if (navigator.share) row.appendChild(btn('btn btn-ghost', t('dm.shareBtn'), function () { navigator.share({ title: titleOf(rec), url: url }).catch(function () {}); }));
+    // Запасной путь для длинных ссылок: тот же запрос файлом, его открывают на странице share.html.
+    row.appendChild(btn('btn btn-ghost', t('dm.file'), function () {
+      var code = url.slice(url.indexOf('#') + 1);
+      var blob = new Blob([JSON.stringify({ app: 'docum.kz', kind: 'share', data: code })], { type: 'application/json' });
+      var a = document.createElement('a'), u = URL.createObjectURL(blob);
+      a.href = u; a.download = 'docum-' + rec.code + '-' + (rec.number || rec.id.slice(0, 6)) + '.docum.json';
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(u); }, 2000);
+    }));
+    out.appendChild(row);
+  }
+  // Подпись ЭЦП отправителя: тот же PAdES, что во вкладке «ЭЦП». Готовая подпись той же версии используется повторно.
+  function sigOk(r) { return r && r.digest === 'ok' && r.crypto !== 'fail' && r.valid !== false && !(r.ocsp && (r.ocsp.status === 'unknown' || (r.ocsp.status === 'revoked' && !(r.tsp && r.tsp.time && r.ocsp.revokedAt && r.tsp.time < r.ocsp.revokedAt)))); }
+  function senderMatch(r, data) { return AG.matchSender(r, data); }
+  function signSelf(v) {
+    var prep = null, stampB = E.stamp({ time: Date.now() }, v.lang || rec.lang);
+    return padesOf(v, stampB, TSP_RESERVE).then(function (pp) {
+      prep = pp;
+      return E.sign(E.b64(prep.toSign), true);
+    }).then(function (cms) {
+      return ecpRecord(cms, 'self', { kind: 'pades', content: prep.toSign, stamp: stampB, reserve: TSP_RESERVE });
+    }).then(function (r) {
+      rec.ecp = rec.ecp || []; rec.ecp.push(r);
+      logEv('signed', { id: rec.id, n: r.n, s: r.tsp ? 'tsp' : '' });
+      return ST.put(rec).then(function () { return r; });
+    });
   }
   function renderShare(panel) {
-    var v = last(rec), fields = partyFields(rec.code), canFill = fields.length && !v.edited;
+    var v = last(rec), data = v.data || {}, fields = AG.partyFields(rec.code);
+    var miss = AG.missing(rec.code, data), canFill = fields.length && !v.edited;
     var box = el('section', 'sh-box');
     box.appendChild(el('h2', 'panel-title', t('dm.shTitle')));
     box.appendChild(el('p', 'lead-s', t('dm.shLead')));
-    var mode = 'sign';
+    var mode = miss.length && canFill ? 'fill' : 'sign';
     var step = function (n, title) { var h = el('h3', 'sh-step'); h.appendChild(el('span', 'sh-num', String(n))); h.appendChild(el('span', null, title)); return h; };
     box.appendChild(step(1, t('dm.step1')));
-    var modes = el('div', 'sh-modes');
+    var modes = el('div', 'sh-modes'), make = btn('btn btn-primary');
+    var setMake = function () { make.textContent = t(mode === 'sign' ? 'dm.makeSign' : 'dm.make'); };
     [['sign', 'dm.mSign', 'dm.mSignD'], ['fill', 'dm.mFill', 'dm.mFillD']].forEach(function (m) {
+      if (m[0] === 'fill' && !fields.length) return;
       var lab = el('label', 'sh-mode'); var r = el('input'); r.type = 'radio'; r.name = 'sh-mode'; r.value = m[0];
-      r.checked = m[0] === 'sign'; r.disabled = m[0] === 'fill' && !canFill;
-      r.addEventListener('change', function () { mode = m[0]; });
+      r.checked = m[0] === mode; r.disabled = (m[0] === 'fill' && !canFill) || (m[0] === 'sign' && miss.length > 0);
+      r.addEventListener('change', function () { mode = m[0]; setMake(); });
       var tx = el('span'); tx.appendChild(el('b', null, t(m[1]))); tx.appendChild(el('span', null, t(m[2])));
       lab.appendChild(r); lab.appendChild(tx); modes.appendChild(lab);
     });
     box.appendChild(modes);
-    if (!canFill) box.appendChild(el('p', 'jr-note', t('dm.noFill')));
+    if (miss.length) box.appendChild(el('p', 'notice notice-warn', f('dm.needFill', { f: miss.map(function (id) { return t('f.' + id); }).join(', ') })));
+    if (fields.length && !canFill) box.appendChild(el('p', 'jr-note', t('dm.noFill')));
     box.appendChild(step(2, t('dm.step2')));
     box.appendChild(el('p', 'notice notice-warn', t('dm.pdWarn')));
     var okL = el('label', 'check'); var ok = el('input'); ok.type = 'checkbox';
     okL.appendChild(ok); okL.appendChild(el('span', null, t('dm.pdOk'))); box.appendChild(okL);
     box.appendChild(step(3, t('dm.step3')));
-    var make = btn('btn btn-primary', t('dm.make'));
-    var out = el('div', 'sh-out'), msg = el('p', 'msg');
-    box.appendChild(make); box.appendChild(msg); box.appendChild(out);
+    setMake();
+    var out = el('div', 'sh-out'), msg = el('p', 'msg'); msg.setAttribute('role', 'status');
+    box.appendChild(make); box.appendChild(msg);
+    var inst = el('p', 'jr-note'); inst.appendChild(document.createTextNode(t('dm.ecpNeed') + ' '));
+    var na = el('a', null, 'ncl.pki.gov.kz'); na.href = 'https://ncl.pki.gov.kz/'; na.target = '_blank'; na.rel = 'noopener'; inst.appendChild(na);
+    box.appendChild(inst);
+    box.appendChild(out);
+    function sent(m, extra) {
+      rec.shares = rec.shares || [];
+      rec.shares.push(Object.assign({ at: Date.now(), n: v.n, mode: m }, extra || {}));
+      if (rec.status !== 'signed') rec.status = 'sent';
+      var badge = app.querySelector('.jr-hero .jr-badge');
+      if (badge && rec.status === 'sent') { badge.className = 'jr-badge jr-sent'; badge.textContent = t('dm.s.sent'); }
+      logEv('shared', { id: rec.id, n: v.n, s: m });
+      return ST.put(rec);
+    }
     make.addEventListener('click', function () {
       if (!ok.checked) { flash(msg, t('dm.needOk'), true); return; }
-      msg.textContent = '';
-      var lang = v.lang || rec.lang, data = v.data || {};
+      var lang = v.lang || rec.lang;
       // В ссылке — данные анкеты и правки относительно шаблона; получатель собирает документ и сверяет отпечаток.
-      var payload = { t: 'q', v: 1, id: rec.id, n: v.n, code: rec.code, lang: lang, number: rec.number, mode: mode,
+      var payload = { t: 'q', v: 2, id: rec.id, n: v.n, code: rec.code, lang: lang, number: rec.number, mode: mode,
         from: data.ip_name || '', hash: v.hash, at: Date.now(), vat: v.at, data: data };
       if (v.edited) payload.patch = ST.patch(TPL.build(rec.code, data, lang), v.blocks);
-      if (mode === 'fill') payload.fields = fields;
-      ST.encode(payload).then(function (code) {
-        var url = location.origin + location.pathname.replace(/documents\.html$/, '') + 'share.html#' + code;
-        out.textContent = '';
-        var field = el('textarea', 'input sh-link'); field.readOnly = true; field.rows = 3; field.value = url;
-        out.appendChild(field);
-        // Лимит одного сообщения Telegram — 4096 символов.
-        var fits = url.length <= 4000, meter = el('div', 'sh-meter' + (fits ? '' : ' is-long'));
-        var bar = el('span'); bar.style.width = Math.min(100, url.length / 40) + '%'; meter.appendChild(bar);
-        out.appendChild(meter);
-        out.appendChild(el('p', 'jr-note', f('dm.long', { n: url.length }) + ' · ' + t(fits ? 'dm.okLen' : 'dm.longLen')));
-        var row = el('div', 'sh-row');
-        row.appendChild(btn('btn btn-primary', t('dm.copy'), function (e) {
-          var b = e.currentTarget;
-          (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(function () { b.textContent = t('dm.copied'); }, function () { field.select(); document.execCommand('copy'); b.textContent = t('dm.copied'); });
-        }));
-        if (navigator.share) row.appendChild(btn('btn btn-ghost', t('dm.shareBtn'), function () { navigator.share({ title: titleOf(rec), url: url }).catch(function () {}); }));
-        // Запасной путь для длинных документов: тот же запрос файлом, его открывают на странице share.html.
-        row.appendChild(btn('btn btn-ghost', t('dm.file'), function () {
-          var blob = new Blob([JSON.stringify({ app: 'docum.kz', kind: 'share', data: code })], { type: 'application/json' });
-          var a = document.createElement('a'), u = URL.createObjectURL(blob);
-          a.href = u; a.download = 'docum-' + rec.code + '-' + (rec.number || rec.id.slice(0, 6)) + '.docum.json';
-          document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(u); }, 2000);
-        }));
-        out.appendChild(row);
-        var badge = app.querySelector('.jr-hero .jr-badge');
-        if (badge && rec.status !== 'signed') { badge.className = 'jr-badge jr-sent'; badge.textContent = t('dm.s.sent'); }
-        rec.shares = rec.shares || [];
-        rec.shares.push({ at: Date.now(), n: v.n, mode: mode });
-        if (rec.status !== 'signed') rec.status = 'sent';
-        logEv('shared', { id: rec.id, n: v.n, s: mode });
-        ST.put(rec);
+      if (mode === 'fill') {
+        payload.fields = fields;
+        ST.encode(payload).then(function (code) { flash(msg, t('dm.fillReady')); linkOut(out, shareUrl(code)); return sent('fill'); });
+        return;
+      }
+      if (miss.length) { flash(msg, t('dm.needFillShort'), true); return; }
+      make.disabled = true; flash(msg, t('ec.prep'));
+      var own = (rec.ecp || []).filter(function (r) { return r.who === 'self' && r.kind === 'pades' && r.n === v.n && sigOk(r) && senderMatch(r, data) !== false; }).pop();
+      (own ? Promise.resolve(own) : (flash(msg, t('ec.confirm')), signSelf(v))).then(function (r) {
+        if (r.n !== v.n || !sigOk(r)) throw { code: 'sig' };
+        if (senderMatch(r, data) === false) throw { code: 'who', a: [r.iin, [r.cn, r.given].filter(Boolean).join(' ')].filter(Boolean).join(', ') };
+        payload.sig = { cms: r.cms, stamp: r.stamp, reserve: r.reserve };
+        return ST.encode(payload).then(function (code) {
+          make.disabled = false;
+          flash(msg, f('dm.signedReady', { n: [r.cn, r.given].filter(Boolean).join(' ') }));
+          linkOut(out, shareUrl(code));
+          return sent('sign', { base: rec.ecp.indexOf(r) });
+        });
+      }).catch(function (e) {
+        make.disabled = false;
+        var c = e && e.code;
+        flash(msg, c === 'who' ? f('dm.whoBad', { a: e.a || '—', b: data.ip_iin || data.ip_fio || '—' }) : c === 'sig' ? t('dm.sigBad') : AG.errText(e), true);
       });
     });
     panel.appendChild(box);
 
-    // Согласования
+    // Ответы второй стороны: подписи ЭЦП, присланные реквизиты и предложения правок.
     var sg = el('section', 'sh-box');
     sg.appendChild(el('h2', 'panel-title', t('dm.signs')));
-    var list = el('div', 'sg-list');
-    (rec.signs || []).forEach(function (s) {
-      var it = el('div', 'sg-item');
-      if (s.ecp) it.appendChild(el('span', 'ecp-tag', t('ec.tag')));
-      else { var im = el('img'); im.src = s.img || window.DocumSign.draw(s.strokes); im.alt = s.name; im.width = 180; im.height = 60; it.appendChild(im); }
-      var info = el('div');
-      info.appendChild(el('b', null, s.name));
-      info.appendChild(el('p', 'jr-meta', (s.who === 'self' ? t('sg.me') : t('sg.other')) + ' · ' + fmt(s.at) + ' · ' + f('dm.ver', { n: s.n })));
-      info.appendChild(el('p', s.ok ? 'sg-ok' : 'sg-bad', s.ok ? f('dm.okHash', { n: s.n }) : t('dm.badHash')));
-      it.appendChild(info);
-      list.appendChild(it);
-    });
-    if (!(rec.signs || []).length) list.appendChild(el('p', 'jr-note', t('dm.noSigns')));
-    sg.appendChild(list);
-
-    var self = btn('btn btn-ghost', t('dm.signSelf'));
-    var padHost = el('div');
-    self.addEventListener('click', function () {
-      self.remove();
-      window.DocumSign.pad(padHost, function (s) {
-        rec.signs = rec.signs || [];
-        rec.signs.push({ who: 'self', name: s.name, strokes: s.strokes, at: s.at, n: v.n, hash: v.hash, ok: true });
-        logEv('signDraw', { id: rec.id, n: v.n });
-        ST.put(rec).then(renderDoc);
+    var mine = (rec.ecp || []).filter(function (r) { return r.who === 'self' && r.kind === 'pades'; });
+    var theirs = (rec.ecp || []).filter(function (r) { return r.kind === 'pades2'; });
+    if (!theirs.length) sg.appendChild(el('p', 'jr-note', t(mine.length ? 'dm.waitOther' : 'dm.noSigns')));
+    theirs.forEach(function (r) {
+      var base = rec.ecp[r.base], vv = rec.versions[r.n - 1];
+      var item = el('div', 'ag-pair');
+      if (base) item.appendChild(AG.card(base, t('sg.me'), { who: senderMatch(base, (vv && vv.data) || {}) }));
+      item.appendChild(AG.card(r, t('sg.other'), { who: r.match, id: AG.expected((vv && vv.data) || {}) }));
+      var dlb = btn('btn btn-primary', '', function () {
+        dlb.disabled = true;
+        AG.signedPdf(rec, r).then(function (pdf) {
+          logEv('dlSigned', { id: rec.id, n: r.n });
+          EX.saveBlob(new Blob([pdf], { type: 'application/pdf' }), fileName(rec).replace(/-v\d+$/, '') + '-v' + r.n + '-signed-2.pdf');
+        }).then(function () { dlb.disabled = false; }, function () { dlb.disabled = false; });
       });
+      dlb.appendChild(el('b', null, t('ag.dl2'))); dlb.appendChild(el('small', null, f('ag.dl2Sub', { n: r.n })));
+      item.appendChild(dlb);
+      sg.appendChild(item);
     });
-    sg.appendChild(self); sg.appendChild(padHost);
+    (rec.changes || []).slice().reverse().forEach(function (c) {
+      var it = el('div', 'notice ag-change');
+      it.appendChild(el('b', null, f('dm.changeFrom', { d: fmt(c.at), n: c.n })));
+      it.appendChild(el('p', null, c.text));
+      sg.appendChild(it);
+    });
 
     var impL = el('label', 'label', t('dm.import')); impL.htmlFor = 'sh-import';
     var imp = el('textarea', 'input'); imp.id = 'sh-import'; imp.rows = 2; imp.placeholder = 'https://…/share.html#…';
@@ -616,10 +660,19 @@
     impB.addEventListener('click', function () {
       var s = imp.value.trim(), k = s.indexOf('#');
       if (k < 0) { flash(impMsg, t('dm.badLink'), true); return; }
+      impB.disabled = true; flash(impMsg, t('ag.checking'));
       ST.decode(s.slice(k + 1)).then(function (p) {
-        if (!p || p.t !== 'r') throw new Error('bad');
-        return ST.importResponse(p).then(function (r) { if (!r) throw new Error('nover'); rec = r; model = null; renderDoc(); });
-      }).catch(function () { flash(impMsg, t('dm.badLink'), true); });
+        if (!p || p.t !== 'r') throw { code: 'bad' };
+        if (p.id !== rec.id) throw { code: 'other' };
+        return AG.importResponse(p);
+      }).then(function (res) {
+        logEv('response', { id: rec.id, s: res.kind });
+        rec = res.rec; model = null; renderDoc();
+      }).catch(function (e) {
+        impB.disabled = false;
+        var c = e && e.code;
+        flash(impMsg, t(c === 'old' ? 'ag.old' : c === 'other' ? 'ag.otherDoc' : c === 'nobase' ? 'ag.noBase' : 'dm.badLink'), true);
+      });
     });
     panel.appendChild(sg);
   }
@@ -747,7 +800,7 @@
       top.appendChild(av);
       var nm = el('div');
       nm.appendChild(el('b', null, [r.cn, r.given].filter(Boolean).join(' ')));
-      nm.appendChild(el('p', 'jr-meta', (r.who === 'self' ? t('sg.me') : t('sg.other')) + ' · ' + (r.kind === 'pades' ? 'PAdES' : 'CAdES (.cms)') + (r.org ? ' · ' + r.org : '')));
+      nm.appendChild(el('p', 'jr-meta', (r.who === 'self' ? t('sg.me') : t('sg.other')) + ' · ' + (r.kind === 'pades' || r.kind === 'pades2' ? 'PAdES' : 'CAdES (.cms)') + (r.org ? ' · ' + r.org : '')));
       top.appendChild(nm);
       top.appendChild(el('span', 'jr-badge ' + (r.n && r.digest !== 'fail' && r.crypto !== 'fail' ? 'jr-signed' : 'jr-sent'), r.n ? f('dm.ver', { n: r.n }) : t('ec.noVer')));
       card.appendChild(top);
@@ -794,6 +847,18 @@
         padBtn.appendChild(el('b', null, t(r.stamp ? 'ec.dlPadesStamp' : 'ec.dlPades')));
         padBtn.appendChild(el('small', null, t(r.stamp ? 'ec.dlPadesStampSub' : 'ec.dlPadesSub')));
         acts.appendChild(padBtn);
+      } else if (r.kind === 'pades2' && v) {
+        // Подпись второй стороны поверх подписи отправителя: один PDF с обеими подписями.
+        var twoBtn = btn('btn btn-primary', '', function () {
+          twoBtn.disabled = true;
+          AG.signedPdf(rec, r).then(function (pdf) {
+            logEv('dlSigned', { id: rec.id, n: v.n });
+            EX.saveBlob(new Blob([pdf], { type: 'application/pdf' }), base + '-signed-2.pdf');
+          }).then(function () { twoBtn.disabled = false; }, function () { twoBtn.disabled = false; });
+        });
+        twoBtn.appendChild(el('b', null, t('ag.dl2')));
+        twoBtn.appendChild(el('small', null, f('ag.dl2Sub', { n: v.n })));
+        acts.appendChild(twoBtn);
       } else {
         var cmsBtn = btn('btn btn-primary', '', function () {
           logEv('dlCms', { id: rec.id, n: r.n });
@@ -804,7 +869,7 @@
         acts.appendChild(cmsBtn);
       }
       // PAdES — подпись уже в PDF, отдельный «PDF со штампом» не нужен. Для .cms PDF со штампом — единственный PDF для печати.
-      if (v && r.kind !== 'pades') {
+      if (v && r.kind !== 'pades' && r.kind !== 'pades2') {
         var pdfBtn = btn('btn btn-ghost', '', function () {
           pdfBtn.disabled = true;
           EX.pdfBytes(stamped(v), v.at).then(function (pdf) {
@@ -822,7 +887,7 @@
         acts.appendChild(docBtn);
       }
       card.appendChild(acts);
-      card.appendChild(el('p', 'jr-note ecp-howto', t(r.kind === 'pades' ? 'ec.howtoPades' : 'ec.howto')));
+      card.appendChild(el('p', 'jr-note ecp-howto', t(r.kind === 'pades' || r.kind === 'pades2' ? 'ec.howtoPades' : 'ec.howto')));
       if (i === justSigned) { card.classList.add('is-new'); window.setTimeout(function () { card.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 60); justSigned = -1; }
       card.appendChild(acts);
       list.appendChild(card);

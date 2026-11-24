@@ -61,11 +61,15 @@
     var size = +trailer.match(/\/Size\s+(\d+)/)[1], rootId = ref(trailer, 'Root'), infoId = ref(trailer, 'Info');
     var idm = trailer.match(/\/ID\s*\[[^\]]*\]/);
     var cat = obj(s, rootId);
-    if (/\/AcroForm/.test(cat)) throw new Error('pdf-acroform');
+    // Уже подписанный PDF (подпись первой стороны): новое поле добавляется к списку /Fields, прежние байты не меняются.
+    var acro = /\/AcroForm\s*<<\s*\/Fields\s*\[/.test(cat);
+    if (/\/AcroForm/.test(cat) && !acro) throw new Error('pdf-acroform');
     var pageId = firstPage(s, ref(cat, 'Pages')), page = obj(s, pageId);
     var sigId = size, widId = size + 1;
 
-    var newCat = cat.slice(0, -2) + '/AcroForm << /Fields [' + widId + ' 0 R] /SigFlags 3 >>\n>>';
+    var newCat = acro
+      ? cat.replace(/(\/AcroForm\s*<<\s*\/Fields\s*\[)/, '$1' + widId + ' 0 R ')
+      : cat.slice(0, -2) + '/AcroForm << /Fields [' + widId + ' 0 R] /SigFlags 3 >>\n>>';
     var newPage = /\/Annots\s*\[/.test(page)
       ? page.replace(/\/Annots\s*\[/, '/Annots [' + widId + ' 0 R ')
       : page.slice(0, -2) + '/Annots [' + widId + ' 0 R]\n>>';

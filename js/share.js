@@ -1,10 +1,12 @@
 /* docum.kz — страница документа по ссылке.
-   Запрос (q): вторая сторона читает документ, при необходимости заполняет свои поля и ставит отметку о согласовании,
-   а сайт собирает ответную ссылку. Ответ (r): отправитель добавляет согласование в свой журнал.
+   Запрос (q) с подписью ЭЦП отправителя: сайт проверяет её, вторая сторона подписывает тот же PDF своей ЭЦП
+   и отправляет ответную ссылку. Запрос реквизитов: вторая сторона вписывает свои данные, без подписи.
+   Ответ (r): отправитель проверяет подпись и добавляет её в журнал. Нарисованных подписей нет.
    Данные живут только в части ссылки после «#»: браузер не отправляет её на сервер. */
 (function () {
   'use strict';
   var ST = window.DocumStore, EX = window.DocumExport, TPL = window.DocumTemplates, L = window.DocumLogic;
+  var E = window.DocumEcp, PA = window.DocumPades, AG = window.DocumAgree;
   var app = document.getElementById('share-app');
   if (!app || !ST) return;
   var t = window.t;
@@ -30,13 +32,36 @@
   }
 
   function sheetOf(blocks, lang) { var s = el('div', 'sheet'); s.lang = lang; s.innerHTML = EX.toHTML(blocks); return s; }
+  function linkBox(out, url, title, lead) {
+    out.textContent = '';
+    out.appendChild(el('h3', 'sp-ready', title));
+    out.appendChild(el('p', 'lead-s', lead));
+    var field = el('textarea', 'input sh-link'); field.readOnly = true; field.rows = 3; field.value = url;
+    out.appendChild(field);
+    var row = el('div', 'sh-row');
+    row.appendChild(btn('btn btn-primary', t('dm.copy'), function (e) {
+      var b = e.currentTarget;
+      (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(function () { b.textContent = t('dm.copied'); }, function () { field.select(); document.execCommand('copy'); b.textContent = t('dm.copied'); });
+    }));
+    if (navigator.share) row.appendChild(btn('btn btn-ghost', t('dm.shareBtn'), function () { navigator.share({ url: url }).catch(function () {}); }));
+    out.appendChild(row);
+    out.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    return row;
+  }
+  function reply(res) { return ST.encode(res).then(function (code) { return location.origin + location.pathname + '#' + code; }); }
+  function old() {
+    app.textContent = '';
+    app.appendChild(el('h1', null, t('sp.title')));
+    app.appendChild(el('p', 'notice notice-warn', t('sp.old')));
+  }
 
-  /* ---------- Запрос: прочитать, заполнить, согласовать ---------- */
+  /* ---------- Запрос: заполнить реквизиты или проверить подпись отправителя и подписать ЭЦП ---------- */
   function renderRequest(p) {
+    if (p.v !== 2 || (p.mode === 'sign' && !p.sig)) return old();
     app.textContent = '';
     // Введённое сохраняется в самом запросе: при смене языка страницы ничего не теряется.
     p.data = p.data || {};
-    var blocks = p._blocks || p.blocks || ST.applyPatch(TPL.build(p.code, p.data, p.lang), p.patch), data = p.data, errors = {};
+    var data = p.data, blocks = p._blocks || ST.applyPatch(TPL.build(p.code, data, p.lang), p.patch);
     var head = el('div', 'page-head');
     head.appendChild(el('h1', null, t('d.' + p.code) + (p.number ? ' № ' + p.number : '')));
     if (p.from) head.appendChild(el('p', 'lead', f('sp.from', { n: p.from })));
@@ -45,179 +70,183 @@
     var side = el('div', 'sp-side'), doc = el('div', 'sp-doc');
     var sheet = sheetOf(blocks, p.lang);
     doc.appendChild(sheet);
-    var dl = btn('btn btn-ghost', t('sp.dl'), function () { EX.downloadDocx(blocks, 'docum-' + p.code + '-' + (p.number || 'doc')); });
-    doc.appendChild(dl);
-
-    if (p.mode === 'fill' && Array.isArray(p.fields)) {
-      var fill = el('section', 'sh-box');
-      fill.appendChild(el('h2', 'panel-title', t('sp.fill')));
-      fill.appendChild(el('p', 'lead-s', t('sp.fillLead')));
-      p.fields.forEach(function (id) {
-        var def = TPL.FIELDS[id]; if (!def) return;
-        if (def.type === 'check') return;
-        var box = el('div', 'field');
-        var lab = el('label', 'label', t('f.' + id) + (def.optional ? ' ' + t('b.optional') : '')); lab.htmlFor = 'sp-' + id;
-        var inp = el('input', 'input'); inp.id = 'sp-' + id;
-        inp.type = def.type === 'date' ? 'date' : 'text';
-        if (def.mode) inp.inputMode = def.mode;
-        if (def.max) inp.maxLength = def.max;
-        if (window.tHas('p.' + id)) inp.placeholder = t('p.' + id);
-        inp.value = data[id] || '';
-        var m = el('p', 'msg');
-        inp.addEventListener('input', function () {
-          data[id] = inp.value;
-          var r = L.checkField(def, id, inp.value, data, p.code);
-          errors[id] = r && r.type === 'error';
-          m.textContent = r ? t(r.key) : ''; m.className = 'msg' + (errors[id] ? ' msg-error' : '');
-          inp.toggleAttribute('aria-invalid', !!errors[id]);
-          blocks = p._blocks = TPL.build(p.code, data, p.lang);
-          sheet.innerHTML = EX.toHTML(blocks);
-        });
-        box.appendChild(lab); box.appendChild(inp); box.appendChild(m);
-        fill.appendChild(box);
-      });
-      side.appendChild(fill);
-    }
-
-    var sg = el('section', 'sh-box');
-    sg.appendChild(el('h2', 'panel-title', t('sp.sign')));
-    var out = el('div', 'sh-out'), msg = el('p', 'msg msg-error');
-    side.appendChild(sg);
-    window.DocumSign.pad(sg, function (s) {
-      if (p.mode === 'fill') {
-        var bad = p.fields.filter(function (id) {
-          var def = TPL.FIELDS[id]; if (!def || def.type === 'check') return false;
-          var r = L.checkField(def, id, data[id], data, p.code); return r && r.type === 'error';
-        });
-        if (bad.length) { msg.textContent = t('sp.fix'); return; }
-      }
-      msg.textContent = '';
-      var hp = ST.hash(ST.text(blocks));
-      hp.then(function (h) {
-        // В ответе только то, чего у отправителя нет: подпись, отпечаток и заполненные данные.
-        var res = { t: 'r', v: 1, id: p.id, n: p.n, code: p.code, lang: p.lang, number: p.number, mode: p.mode, name: s.name, strokes: s.strokes, at: s.at, hash: h };
-        if (p.mode === 'fill') res.data = data;
-        return ST.encode(res);
-      }).then(function (code) {
-        var url = location.origin + location.pathname + '#' + code;
-        out.textContent = '';
-        out.appendChild(el('h3', 'sp-ready', t('sp.reply')));
-        out.appendChild(el('p', 'lead-s', t('sp.replyLead')));
-        var field = el('textarea', 'input sh-link'); field.readOnly = true; field.rows = 3; field.value = url;
-        out.appendChild(field);
-        var row = el('div', 'sh-row');
-        row.appendChild(btn('btn btn-primary', t('dm.copy'), function (e) {
-          var b = e.currentTarget;
-          (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(function () { b.textContent = t('dm.copied'); }, function () { field.select(); document.execCommand('copy'); b.textContent = t('dm.copied'); });
-        }));
-        if (navigator.share) row.appendChild(btn('btn btn-ghost', t('dm.shareBtn'), function () { navigator.share({ url: url }).catch(function () {}); }));
-        out.appendChild(row);
-        out.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      });
-    });
-    sg.appendChild(msg);
-
-    // Подпись ЭЦП второй стороной: тот же PDF, что у отправителя (дата файла — дата версии).
-    var E = window.DocumEcp, ecpBox = el('div', 'ecp-share');
-    ecpBox.appendChild(el('h3', 'sh-step', t('ec.shareTitle')));
-    ecpBox.appendChild(el('p', 'jr-note', t('ec.shareLead')));
-    var em = el('p', 'msg');
-    var eb = btn('btn btn-primary', t('ec.signShare'), function () {
-      if (p.mode === 'fill') {
-        var bad = p.fields.filter(function (id) { var def = TPL.FIELDS[id]; if (!def || def.type === 'check') return false; var r = L.checkField(def, id, data[id], data, p.code); return r && r.type === 'error'; });
-        if (bad.length) { em.textContent = t('sp.fix'); em.className = 'msg msg-error'; return; }
-      }
-      var at = p.mode === 'fill' ? Date.now() : (p.vat || p.at), cmsB64 = null, pdfHash = '';
-      em.className = 'msg'; em.textContent = t('ec.prep');
-      eb.disabled = true;
-      EX.pdfBytes(blocks, at).then(function (pdf) {
-        em.textContent = t('ec.confirm');
-        crypto.subtle.digest('SHA-256', pdf).then(function (h) { pdfHash = E.hex(new Uint8Array(h)); });
-        return E.sign(E.b64(pdf));
-      }).then(function (cms) {
-        cmsB64 = cms;
-        var info = E.parse(E.unb64(cms)).info, subj = info.subject || {};
-        EX.saveBlob(new Blob([E.unb64(cms)], { type: 'application/pkcs7-signature' }), 'docum-' + p.code + '-' + (p.number || 'doc') + '-ecp.cms');
-        return ST.hash(ST.text(blocks)).then(function (h) {
-          var res = { t: 'r', v: 1, id: p.id, n: p.n, code: p.code, lang: p.lang, number: p.number, mode: p.mode, name: [subj.cn, subj.given].filter(Boolean).join(' '), ecp: true, at: at, hash: h };
-          if (p.mode === 'fill') res.data = data;
-          return ST.encode(res);
-        });
-      }).then(function (code) {
-        eb.disabled = false;
-        var link = location.origin + location.pathname + '#' + code;
-        out.textContent = '';
-        out.appendChild(el('h3', 'sp-ready', t('ec.shareDone')));
-        out.appendChild(el('p', 'lead-s', t('ec.shareSend')));
-        var field = el('textarea', 'input sh-link'); field.readOnly = true; field.rows = 3; field.value = link;
-        out.appendChild(field);
-        var row = el('div', 'sh-row');
-        row.appendChild(btn('btn btn-primary', t('dm.copy'), function (e2) { var b2 = e2.currentTarget; (navigator.clipboard ? navigator.clipboard.writeText(link) : Promise.reject()).then(function () { b2.textContent = t('dm.copied'); }, function () { field.select(); document.execCommand('copy'); b2.textContent = t('dm.copied'); }); }));
-        row.appendChild(btn('btn btn-ghost', t('ec.dlCms'), function () { EX.saveBlob(new Blob([E.unb64(cmsB64)], { type: 'application/pkcs7-signature' }), 'docum-' + p.code + '-' + (p.number || 'doc') + '-ecp.cms'); }));
-        // PDF со штампом ЭЦП — для печати; юридически значим .cms.
-        var stampPdf = btn('btn btn-ghost', t('ec.dlPdf'), function () {
-          var pr = E.parse(E.unb64(cmsB64)), inf = pr.info, sj = inf.subject || {};
-          var r = { cn: sj.cn || '', given: sj.given || '', iin: inf.iin || '', bin: inf.bin || '', org: sj.org || '', issuer: (inf.issuer || {}).cn || '',
-            from: inf.notBefore, to: inf.notAfter, time: pr.attrs.time || null, at: Date.now(), serial: inf.serial || '', contentHash: pdfHash };
-          EX.pdfBytes(blocks.concat([E.stamp(r, p.lang)]), at).then(function (pdf) {
-            EX.saveBlob(new Blob([pdf], { type: 'application/pdf' }), 'docum-' + p.code + '-' + (p.number || 'doc') + '-ecp-stamp.pdf');
-          });
-        });
-        row.appendChild(stampPdf);
-        out.appendChild(row);
-        out.appendChild(el('p', 'jr-note', t('ec.howto')));
-        em.textContent = '';
-      }).catch(function (e) {
-        eb.disabled = false; em.className = 'msg msg-error';
-        var c = e && e.code;
-        em.textContent = c === 'noLayer' ? t('ec.none') : c === 'cancel' ? t('ec.cancel') : c === 'timeout' ? t('ec.timeout') : t('ec.err').replace('{m}', (e && e.message) || '');
-      });
-    });
-    ecpBox.appendChild(eb); ecpBox.appendChild(em);
-    sg.insertBefore(ecpBox, sg.querySelector('.sign'));
-    sg.appendChild(out);
+    doc.appendChild(btn('btn btn-ghost', t('sp.dl'), function () { EX.downloadDocx(blocks, 'docum-' + p.code + '-' + (p.number || 'doc')); }));
     wrap.appendChild(doc); wrap.appendChild(side);
     app.appendChild(wrap);
+    if (p.mode === 'fill') fillSide(p, side, sheet, function (b) { blocks = b; });
+    else signSide(p, side, blocks);
   }
 
-  /* ---------- Ответ: показать и добавить в журнал ---------- */
+  // Реквизиты второй стороны: без подписи, это только данные для договора.
+  function fillSide(p, side, sheet, setBlocks) {
+    var data = p.data, fields = (p.fields || []).filter(function (id) { var d = TPL.FIELDS[id]; return d && d.type !== 'check'; });
+    var box = el('section', 'sh-box');
+    box.appendChild(el('h2', 'panel-title', t('sp.fill')));
+    box.appendChild(el('p', 'lead-s', t('sp.fillLead')));
+    fields.forEach(function (id) {
+      var def = TPL.FIELDS[id];
+      var fb = el('div', 'field');
+      var lab = el('label', 'label', t('f.' + id) + (def.optional ? ' ' + t('b.optional') : '')); lab.htmlFor = 'sp-' + id;
+      var inp = el('input', 'input'); inp.id = 'sp-' + id;
+      inp.type = def.type === 'date' ? 'date' : 'text';
+      if (def.mode) inp.inputMode = def.mode;
+      if (def.max) inp.maxLength = def.max;
+      if (window.tHas('p.' + id)) inp.placeholder = t('p.' + id);
+      inp.value = data[id] || '';
+      var m = el('p', 'msg');
+      inp.addEventListener('input', function () {
+        data[id] = inp.value;
+        var r = L.checkField(def, id, inp.value, data, p.code, true);
+        m.textContent = r ? t(r.key) : ''; m.className = 'msg' + (r && r.type === 'error' ? ' msg-error' : '');
+        inp.toggleAttribute('aria-invalid', !!(r && r.type === 'error'));
+        var b = p._blocks = TPL.build(p.code, data, p.lang);
+        setBlocks(b); sheet.innerHTML = EX.toHTML(b);
+      });
+      fb.appendChild(lab); fb.appendChild(inp); fb.appendChild(m);
+      box.appendChild(fb);
+    });
+    var msg = el('p', 'msg msg-error'), out = el('div', 'sh-out');
+    box.appendChild(btn('btn btn-primary', t('sp.sendFill'), function () {
+      var bad = fields.filter(function (id) { var r = L.checkField(TPL.FIELDS[id], id, data[id], data, p.code, true); return r && r.type === 'error'; });
+      if (bad.length) { msg.textContent = t('sp.fix'); return; }
+      msg.textContent = '';
+      var only = {}; fields.forEach(function (id) { if (data[id] != null) only[id] = data[id]; });
+      reply({ t: 'r', v: 2, mode: 'fill', id: p.id, n: p.n, code: p.code, lang: p.lang, number: p.number, at: Date.now(), data: only })
+        .then(function (url) { linkBox(out, url, t('sp.reply'), t('sp.replyFill')); });
+    }));
+    box.appendChild(el('p', 'jr-note', t('sp.fillNote')));
+    box.appendChild(msg); box.appendChild(out);
+    side.appendChild(box);
+  }
+
+  // Подпись: сначала сайт проверяет подпись отправителя, потом вторая сторона подписывает тот же PDF поверх неё.
+  function signSide(p, side, blocks) {
+    var data = p.data, sig = p.sig;
+    var chk = el('section', 'sh-box');
+    chk.appendChild(el('h2', 'panel-title', t('sp.senderSig')));
+    var st = el('p', 'msg', t('ag.checking')); chk.appendChild(st);
+    side.appendChild(chk);
+    var mine = el('section', 'sh-box');
+    side.appendChild(mine);
+    var prep1 = null;
+    Promise.all([ST.hash(ST.text(blocks)), AG.first(blocks, sig.stamp, p.vat, sig.reserve)]).then(function (r) {
+      prep1 = r[1];
+      var docOk = r[0] === p.hash;
+      return AG.check(sig.cms, prep1.toSign).then(function (x) { return { x: x, docOk: docOk }; });
+    }).then(function (o) {
+      var who = AG.matchSender(o.x, data);
+      st.remove();
+      chk.appendChild(AG.card(o.x, t('sg.me'), { doc: o.docOk, who: who, id: data.ip_iin || data.ip_fio }));
+      var good = o.docOk && o.x.ok && who !== false;
+      chk.appendChild(el('p', good ? 'notice ag-ok' : 'notice notice-warn', t(good ? 'sp.senderOk' : 'sp.senderBad')));
+      if (o.x.crypto === 'skip') chk.appendChild(verifyHint());
+      mySide(p, mine, prep1, good);
+    }).catch(function () {
+      st.className = 'msg msg-error'; st.textContent = t('sp.senderBad');
+      mySide(p, mine, null, false);
+    });
+  }
+  function verifyHint() {
+    var n = el('p', 'jr-note'); n.appendChild(document.createTextNode(t('ag.gostHint') + ' '));
+    var a = el('a', null, t('ec.verifyLink')); a.href = 'verify.html'; n.appendChild(a);
+    return n;
+  }
+  function mySide(p, box, prep1, good) {
+    var data = p.data;
+    box.appendChild(el('h2', 'panel-title', t('sp.sign')));
+    var out = el('div', 'sh-out'), msg = el('p', 'msg'); msg.setAttribute('role', 'status');
+    if (good) {
+      box.appendChild(el('p', 'lead-s', t('sp.signLead')));
+      var agreeL = el('label', 'check'), agree = el('input'); agree.type = 'checkbox';
+      agreeL.appendChild(agree); agreeL.appendChild(el('span', null, t('sp.agree'))); box.appendChild(agreeL);
+      var go = btn('btn btn-primary', t('sp.signBtn'), function () {
+        if (!agree.checked) { msg.className = 'msg msg-error'; msg.textContent = t('sp.needAgree'); return; }
+        var at2 = Date.now(), prep2 = null;
+        go.disabled = true; msg.className = 'msg'; msg.textContent = t('ec.prep');
+        AG.second(prep1, p.sig.cms, at2, AG.RESERVE).then(function (pp) {
+          prep2 = pp; msg.textContent = t('ec.confirm');
+          return E.sign(E.b64(prep2.toSign), true);
+        }).then(function (cms) {
+          msg.textContent = t('ag.checking');
+          return AG.check(cms, prep2.toSign);
+        }).then(function (y) {
+          var who = AG.matchOther(y, data);
+          box.insertBefore(AG.card(y, t('sg.other'), { who: who, id: AG.expected(data) || data.w_fio }), msg);
+          if (!y.ok) throw { code: 'sig' };
+          if (who === false) throw { code: 'who' };
+          var pdf = PA.embed(prep2, E.unb64(y.cms)), name = 'docum-' + p.code + '-' + (p.number || 'doc') + '-signed-2.pdf';
+          EX.saveBlob(new Blob([pdf], { type: 'application/pdf' }), name);
+          go.remove(); agreeL.remove(); msg.textContent = '';
+          return reply({ t: 'r', v: 2, mode: 'sign', id: p.id, n: p.n, code: p.code, lang: p.lang, number: p.number, hash: p.hash, at: at2, reserve: AG.RESERVE, base: AG.tag(p.sig.cms), cms: y.cms })
+            .then(function (url) {
+              var row = linkBox(out, url, t('sp.signed'), t('sp.signedLead'));
+              row.appendChild(btn('btn btn-ghost', t('ag.dl2'), function () { EX.saveBlob(new Blob([pdf], { type: 'application/pdf' }), name); }));
+            });
+        }).catch(function (e) {
+          go.disabled = false; msg.className = 'msg msg-error';
+          var c = e && e.code;
+          msg.textContent = c === 'who' ? t('sp.whoBad') : c === 'sig' ? t('dm.sigBad') : AG.errText(e);
+        });
+      });
+      box.appendChild(go);
+      box.appendChild(msg);
+      var inst = el('p', 'jr-note'); inst.appendChild(document.createTextNode(t('sp.pcOnly') + ' '));
+      var na = el('a', null, 'ncl.pki.gov.kz'); na.href = 'https://ncl.pki.gov.kz/'; na.target = '_blank'; na.rel = 'noopener'; inst.appendChild(na);
+      box.appendChild(inst);
+    } else {
+      box.appendChild(el('p', 'lead-s', t('sp.cantSign')));
+    }
+    // Не согласны с текстом — предложить правки. Это не подпись: отправитель исправит документ и пришлёт новую ссылку.
+    var ch = el('details', 'ag-propose');
+    ch.appendChild(el('summary', null, t('sp.propose')));
+    var ta = el('textarea', 'input'); ta.rows = 4; ta.maxLength = 4000; ta.setAttribute('aria-label', t('sp.propose'));
+    var cm = el('p', 'msg msg-error');
+    ch.appendChild(ta);
+    ch.appendChild(btn('btn btn-ghost', t('sp.proposeBtn'), function () {
+      var text = ta.value.trim();
+      if (!text) { cm.textContent = t('sp.proposeNeed'); return; }
+      cm.textContent = '';
+      reply({ t: 'r', v: 2, mode: 'change', id: p.id, n: p.n, code: p.code, lang: p.lang, number: p.number, at: Date.now(), text: text })
+        .then(function (url) { linkBox(out, url, t('sp.reply'), t('sp.replyChange')); });
+    }));
+    ch.appendChild(cm);
+    box.appendChild(ch);
+    box.appendChild(out);
+  }
+
+  /* ---------- Ответ: проверить и добавить в журнал отправителя ---------- */
   function renderResponse(p) {
+    if (p.v !== 2) return old();
     app.textContent = '';
     var head = el('div', 'page-head');
+    var title = t('d.' + p.code) + (p.number ? ' № ' + p.number : '');
     head.appendChild(el('h1', null, t('sp.resTitle')));
-    head.appendChild(el('p', 'lead', f('sp.resLead', { n: p.name, d: t('d.' + p.code) + (p.number ? ' № ' + p.number : '') })));
+    head.appendChild(el('p', 'lead', f(p.mode === 'sign' ? 'sp.resSign' : p.mode === 'fill' ? 'sp.resFill' : 'sp.resChange', { d: title })));
     app.appendChild(head);
-    var card = el('div', 'sg-item sg-big');
-    var im = el('img'); im.src = window.DocumSign.draw(p.strokes); im.alt = p.name; im.width = 240; im.height = 80;
-    card.appendChild(im);
-    var info = el('div');
-    info.appendChild(el('b', null, p.name));
-    info.appendChild(el('p', 'jr-meta', fmt(p.at)));
-    var integ = el('p', 'jr-meta');
-    info.appendChild(integ);
-    card.appendChild(info);
-    app.appendChild(card);
-    integ.textContent = f('sp.hash', { h: (p.hash || '').slice(0, 16) + '…' });
-    ST.get(p.id).catch(function () { return null; }).then(function (rec) {
-      var blocks = ST.responseBlocks(p, rec);
-      if (!blocks) return;
-      ST.hash(ST.text(blocks)).then(function (h) { if (h !== p.hash) app.insertBefore(el('p', 'notice notice-warn', t('sp.altered')), card); });
-      app.appendChild(sheetOf(blocks, p.lang));
-    });
+    if (p.mode === 'change') { var q = el('blockquote', 'notice ag-change'); q.textContent = p.text || ''; app.appendChild(q); }
+    var res = el('div');
     var msg = el('p', 'msg');
-    var add = btn('btn btn-primary', t('sp.addJ'), function () {
+    var add = btn('btn btn-primary', t(p.mode === 'sign' ? 'sp.addSign' : 'sp.addJ'), function () {
       // При защите паролем журнал сначала нужно открыть.
       var VA = window.DocumVault;
-      (VA && VA.locked() ? VA.prompt() : Promise.resolve()).then(function () { return ST.importResponse(p); }).then(function (r) {
+      add.disabled = true; msg.className = 'msg'; msg.textContent = p.mode === 'sign' ? t('ag.checking') : '';
+      (VA && VA.locked() ? VA.prompt() : Promise.resolve()).then(function () { return AG.importResponse(p); }).then(function (r) {
         msg.textContent = '';
-        if (!r) { msg.textContent = t('sp.bad'); return; }
-        if (VA) VA.log('response', { id: r.id, s: p.ecp ? 'ecp' : p.mode });
-        var a = el('a', null, t('sp.added')); a.href = 'documents.html?id=' + r.id; msg.appendChild(a);
-        add.disabled = true;
-      }, function (e) { if (!(e && e.code === 'cancel')) msg.textContent = t('sp.bad'); });
+        if (VA) VA.log('response', { id: r.rec.id, s: r.kind });
+        if (r.sig) {
+          var vv = r.rec.versions[r.sig.n - 1];
+          res.appendChild(AG.card(r.sig, t('sg.other'), { who: r.sig.match, id: AG.expected((vv && vv.data) || {}) }));
+          res.appendChild(el('p', r.sig.ok && r.sig.match !== false ? 'notice ag-ok' : 'notice notice-warn', t(r.sig.ok && r.sig.match !== false ? 'sp.bothOk' : 'sp.otherBad')));
+        }
+        var a = el('a', null, t('sp.added')); a.href = 'documents.html?id=' + r.rec.id; msg.appendChild(a);
+      }, function (e) {
+        add.disabled = false; msg.className = 'msg msg-error';
+        var c = e && e.code;
+        msg.textContent = c === 'cancel' ? '' : t(c === 'norec' ? 'ag.noRec' : c === 'nobase' ? 'ag.noBase' : 'sp.bad');
+      });
     });
-    app.appendChild(add); app.appendChild(msg);
-    app.appendChild(el('p', 'sign-legal', t('dm.legal')));
+    app.appendChild(add); app.appendChild(msg); app.appendChild(res);
+    app.appendChild(el('p', 'sign-legal', t('ec.legal')));
   }
 
   function render() {

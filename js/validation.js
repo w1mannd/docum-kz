@@ -316,10 +316,12 @@
     remote: { work_start: 'date' }
   };
 
-  function checkField(def, id, value, data, code) {
+  // strict: поля с пометкой later (реквизиты второй стороны) обязательны — так проверяет сама вторая сторона
+  // и отправитель перед подписью ЭЦП. В конструкторе отправитель может оставить их пустыми.
+  function checkField(def, id, value, data, code, strict) {
     var isBool = def.type === 'check';
     var empty = isBool ? false : isEmpty(value);
-    if (empty) return def.optional ? null : err('e.required');
+    if (empty) return def.optional || (def.later && !strict) ? null : err('e.required');
     if (def.rule) {
       var r = RULES[def.rule](value, data);
       if (r) return r;

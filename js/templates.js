@@ -23,9 +23,10 @@
     ip_bank: { type: 'text' },
     ip_bik: { type: 'text' },
 
-    cp_name: { type: 'text', group: 'g.cp' },
-    cp_bin: { type: 'text', rule: 'iin', mode: 'numeric', max: 12 },
-    cp_addr: { type: 'text' },
+    // later: реквизиты второй стороны отправитель может оставить пустыми — их впишет сама вторая сторона по ссылке.
+    cp_name: { type: 'text', group: 'g.cp', later: true },
+    cp_bin: { type: 'text', rule: 'iin', mode: 'numeric', max: 12, later: true },
+    cp_addr: { type: 'text', later: true },
     cp_rep: { type: 'text', optional: true },
     cp_contact: { type: 'text', optional: true },
 
@@ -48,10 +49,10 @@
     contract_date: { type: 'date' },
 
     w_fio: { type: 'text', group: 'g.worker' },
-    w_iin: { type: 'text', rule: 'iin', mode: 'numeric', max: 12 },
-    w_addr: { type: 'text' },
-    w_doc_no: { type: 'text', rule: 'idNum', mode: 'numeric', max: 9 },
-    w_doc_date: { type: 'date' },
+    w_iin: { type: 'text', rule: 'iin', mode: 'numeric', max: 12, later: true },
+    w_addr: { type: 'text', later: true },
+    w_doc_no: { type: 'text', rule: 'idNum', mode: 'numeric', max: 9, later: true },
+    w_doc_date: { type: 'date', later: true },
     age16: { type: 'check', rule: 'age' },
     position: { type: 'text' },
     place: { type: 'text' },

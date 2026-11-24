@@ -147,35 +147,5 @@
     return p.then(function (b) { return JSON.parse(new TextDecoder().decode(b)); });
   };
 
-  // Ответ второй стороны: при заполнении — новая версия, затем отметка о согласовании с проверкой отпечатка.
-  // Текст ответа: при заполнении документ собирается заново из данных, иначе берётся отправленная версия по отпечатку.
-  api.responseBlocks = function (p, rec) {
-    if (p.blocks) return p.blocks;
-    if (p.data && root.DocumTemplates) return api.applyPatch(root.DocumTemplates.build(p.code, p.data, p.lang), p.patch);
-    var v = rec && rec.versions.filter(function (x) { return x.hash === p.hash; })[0];
-    return v ? v.blocks : null;
-  };
-  api.importResponse = function (p) {
-    return api.get(p.id).then(function (r) {
-      var blocks = api.responseBlocks(p, r);
-      if (!blocks) return null;
-      return api.hash(api.text(blocks)).then(function (h) {
-        var ok = h === p.hash;
-        if (!r) r = { id: p.id, code: p.code, lang: p.lang, number: p.number || '', created: Date.now(), status: 'signed', versions: [], shares: [], signs: [] };
-        var same = r.versions.filter(function (v) { return v.hash === h; })[0], n;
-        if (same) n = same.n;
-        else {
-          var prev = r.versions[r.versions.length - 1];
-          n = r.versions.length + 1;
-          r.versions.push({ n: n, at: p.at, blocks: blocks, data: p.data || (prev && prev.data) || {}, lang: p.lang, hash: h, note: '', byOther: p.mode === 'fill' });
-        }
-        r.signs = r.signs || [];
-        if (!r.signs.some(function (s) { return s.at === p.at && s.name === p.name; })) r.signs.push({ who: 'other', name: p.name, strokes: p.strokes, ecp: !!p.ecp, at: p.at, n: n, hash: h, ok: ok });
-        r.status = 'signed';
-        return api.put(r);
-      });
-    });
-  };
-
   root.DocumStore = api;
 })(window);
