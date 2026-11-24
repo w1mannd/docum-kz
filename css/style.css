@@ -874,6 +874,10 @@ a.card:hover .more::after { transform: translateX(4px); }
 .ecp-dls .btn { flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; min-height: 58px; padding: 10px 14px; text-align: left; white-space: normal; line-height: 1.25; }
 .ecp-dls .btn b { font-size: 15px; font-weight: 600; }
 .ecp-dls .btn small { font-size: 12px; font-weight: 400; opacity: .78; }
+/* Кнопка с заголовком и строкой пояснения под ним (PDF с двумя подписями) */
+.btn-two { flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; min-height: 58px; padding: 10px 18px; text-align: left; white-space: normal; line-height: 1.25; width: auto; max-width: 100%; justify-self: start; align-self: flex-start; }
+.btn-two b { font-size: 15px; font-weight: 600; }
+.btn-two small { font-size: 12px; font-weight: 400; opacity: .82; }
 .ecp-howto { margin-top: 12px; }
 .ecp-card.is-new { animation: ecpNew 1.6s var(--ease); }
 @keyframes ecpNew { 0% { box-shadow: 0 0 0 0 rgba(52, 199, 89, .55); } 60% { box-shadow: 0 0 0 8px rgba(52, 199, 89, 0); } }

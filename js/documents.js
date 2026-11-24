@@ -557,7 +557,7 @@
       var item = el('div', 'ag-pair');
       if (base) item.appendChild(AG.card(base, t('sg.me'), { who: AG.matchSender(base, (vv && vv.data) || {}) }));
       item.appendChild(AG.card(r, t('sg.other'), { who: r.match, id: AG.expected((vv && vv.data) || {}) }));
-      var dlb = btn('btn btn-primary', '', function () {
+      var dlb = btn('btn btn-primary btn-two', '', function () {
         dlb.disabled = true;
         AG.signedPdf(rec, r).then(function (pdf) {
           logEv('dlSigned', { id: rec.id, n: r.n });
@@ -773,7 +773,7 @@
         acts.appendChild(padBtn);
       } else if (r.kind === 'pades2' && v) {
         // Подпись второй стороны поверх подписи отправителя: один PDF с обеими подписями.
-        var twoBtn = btn('btn btn-primary', '', function () {
+        var twoBtn = btn('btn btn-primary btn-two', '', function () {
           twoBtn.disabled = true;
           AG.signedPdf(rec, r).then(function (pdf) {
             logEv('dlSigned', { id: rec.id, n: v.n });
