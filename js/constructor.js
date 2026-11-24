@@ -365,19 +365,47 @@
       n.addEventListener('click', next);
       inner.appendChild(n);
     } else {
-      var d = el('button', 'btn btn-primary', t('b.docx'));
+      // Шаг проверки: «Назад» слева, все действия с документом — справа одной группой.
+      bar.classList.add('is-review');
+      var AG = window.DocumAgree, canSend = !!(AG && window.DocumEcp);
+      var d = el('button', 'btn ' + (canSend ? 'btn-ghost' : 'btn-primary'));
       d.type = 'button'; d.id = 'btn-docx';
+      d.appendChild(el('span', 'lbl-full', t('b.docx'))); d.appendChild(el('span', 'lbl-short', 'DOCX'));
       d.addEventListener('click', function () { download('docx', d); });
-      var p = el('button', 'btn btn-primary', t('b.pdf'));
+      var p = el('button', 'btn ' + (canSend ? 'btn-ghost' : 'btn-primary'));
       p.type = 'button'; p.id = 'btn-pdf';
+      p.appendChild(el('span', 'lbl-full', t('b.pdf'))); p.appendChild(el('span', 'lbl-short', 'PDF'));
       p.addEventListener('click', function () { download('pdf', p); });
       inner.appendChild(d); inner.appendChild(p);
+      if (canSend) {
+        var sb = el('button', 'btn btn-primary');
+        sb.type = 'button'; sb.id = 'btn-send';
+        sb.appendChild(el('span', 'lbl-full', t('b.sendSign'))); sb.appendChild(el('span', 'lbl-short', t('b.sendSignS')));
+        sb.addEventListener('click', function () { openSend(sb); });
+        inner.appendChild(sb);
+      }
     }
     bar.appendChild(inner);
     return bar;
   }
 
   function scrollTop() { window.scrollTo({ top: 0 }); }
+
+  // Панель отправки на подпись ЭЦП — та же, что в «Моих документах». Документ уже в журнале (сохраняется сам).
+  function openSend(sb) {
+    var host = document.getElementById('review-send');
+    if (!host) return;
+    if (host.childNodes.length) { host.scrollIntoView({ block: 'start', behavior: 'smooth' }); return; }
+    sb.disabled = true;
+    saveToJournal().then(function (rec) {
+      return rec ? window.DocumStore.get(rec.id) : null;
+    }).then(function (rec) {
+      sb.disabled = false;
+      if (!rec) return;
+      host.appendChild(window.DocumAgree.sharePanel(rec, { onSent: function (r) { markSaved(r); } }));
+      host.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    });
+  }
 
   /* ---------- Поля ---------- */
   function renderFields(main) {
@@ -717,28 +745,9 @@
     again.type = 'button';
     again.addEventListener('click', function () { start(state.code); scrollTop(); });
     acts.appendChild(again);
-    // Отправить на подпись ЭЦП прямо отсюда: документ уже в журнале, панель та же, что в «Моих документах».
-    var AG = window.DocumAgree;
-    if (AG && window.DocumEcp) {
-      var sendHost = el('div', 'review-send');
-      var sendBtn = el('button', 'btn btn-primary', t('b.sendSign'));
-      sendBtn.type = 'button';
-      sendBtn.addEventListener('click', function () {
-        sendBtn.disabled = true;
-        saveToJournal().then(function (rec) {
-          if (!rec) { sendBtn.disabled = false; return null; }
-          return window.DocumStore.get(rec.id);
-        }).then(function (rec) {
-          if (!rec) return;
-          sendHost.textContent = '';
-          sendHost.appendChild(AG.sharePanel(rec, { onSent: function (r) { markSaved(r); } }));
-          sendHost.scrollIntoView({ block: 'start', behavior: 'smooth' });
-        });
-      });
-      sendHost.appendChild(sendBtn);
-      sendHost.appendChild(el('p', 'jr-note', t('b.sendSignNote')));
-      main.appendChild(sendHost);
-    }
+    // Сюда раскрывается панель «Отправить на подпись» (кнопка — в нижней панели рядом со скачиванием).
+    var sendHost = el('div', 'review-send'); sendHost.id = 'review-send';
+    main.appendChild(sendHost);
     saveToJournal();
   }
 
@@ -835,7 +844,7 @@
     var name = 'docum-' + state.code + '-' + (state.data.date || new Date().toISOString().slice(0, 10));
     var blocks = TPL.build(state.code, state.data, state.docLang);
     var status = document.getElementById('dl-status');
-    var label = btn.textContent;
+    var label = btn.innerHTML;
     btn.disabled = true; btn.textContent = t('b.preparing');
     status.textContent = ''; status.className = 'msg';
     logEv(kind === 'docx' ? 'dlDocx' : 'dlPdf', state.journalId ? { id: state.journalId } : null);
@@ -844,7 +853,7 @@
       status.textContent = t('e.download');
       status.className = 'msg msg-error';
     }).then(function () {
-      btn.disabled = false; btn.textContent = label;
+      btn.disabled = false; btn.innerHTML = label;
     });
   }
 
